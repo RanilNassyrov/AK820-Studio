@@ -22,7 +22,7 @@ SCREEN_STATE = ROOT / ".screen_state"  # hash of the picture last uploaded in fu
 DEFAULTS = {
     "screen_music": True,
     "music_sources": "music",  # "music": music players only; "all": browsers and video players too
-    "pause_to_idle_minutes": 2,
+    "pause_to_idle_seconds": 120,
     "screen_notifications": True,
     "notify_apps": ["outlook", "mail", "почта", "teams", "discord", "telegram", "whatsapp", "slack", "gmail"],
     "notice_seconds": 20,
@@ -67,6 +67,8 @@ def load_config():
         # settings files from the first version used these names
         renames = {"idle_animation": "idle_style"}
         cfg.update({renames.get(k, k): v for k, v in saved.items() if renames.get(k, k) in DEFAULTS})
+        if "pause_to_idle_minutes" in saved and "pause_to_idle_seconds" not in saved:
+            cfg["pause_to_idle_seconds"] = saved["pause_to_idle_minutes"] * 60
     if cfg["idle_style"] not in render.IDLE:
         cfg["idle_style"] = "quote"
     return cfg
@@ -165,7 +167,7 @@ class Service:
                 lambda: render.notification(n, more, lim["animated"])
         t = self.track
         if cfg["screen_music"] and t and self.is_music(t):
-            idle_after = cfg["pause_to_idle_minutes"] * 60
+            idle_after = cfg["pause_to_idle_seconds"]
             if t.playing or not idle_after or (self.paused_since and now - self.paused_since < idle_after):
                 return ("track", t.title, t.artist), f"Музыка: {t.title}", \
                     lambda: render.now_playing(t, 6 if lim["animated"] else 1)
