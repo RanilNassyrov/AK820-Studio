@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>AK820 Studio</title>
+<style>
+:root {
+  --bg: #0d0e14; --panel: #151722; --panel2: #1c1f2d; --line: #262a3b; --text: #e9eaf2;
+  --muted: #8b8fa7; --accent: #7c5cff; --accent2: #00e0ff; --ok: #2ad480; --warn: #ffb547; --bad: #ff5470;
+  --grad: linear-gradient(135deg, var(--accent), var(--accent2));
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+  font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", sans-serif; user-select: none; }
+body { display: flex; overflow: hidden; }
+button, input, select { font: inherit; color: inherit; }
+
+/* sidebar */
+nav { width: 230px; flex: none; background: #0a0b10; border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; padding: 22px 14px; gap: 4px; }
+.brand { display: flex; align-items: center; gap: 12px; padding: 0 8px 22px; }
+.logo { width: 38px; height: 38px; border-radius: 11px; background: var(--grad); display: grid; place-items: center;
+  box-shadow: 0 6px 24px -6px var(--accent); font-weight: 800; font-size: 13px; }
+.brand b { display: block; font-size: 16px; letter-spacing: .3px; }
+.brand span { color: var(--muted); font-size: 12px; }
+nav a { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 10px; color: var(--muted);
+  cursor: pointer; transition: .15s; font-weight: 500; }
+nav a:hover { background: var(--panel); color: var(--text); }
+nav a.on { background: var(--panel2); color: var(--text); box-shadow: inset 3px 0 0 var(--accent); }
+nav a svg { width: 19px; height: 19px; flex: none; }
+.conn { margin-top: auto; padding: 12px 14px; border-radius: 12px; background: var(--panel); font-size: 12.5px;
+  display: flex; align-items: center; gap: 10px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 10px var(--bad); flex: none; }
+.dot.ok { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+
+/* main */
+main { flex: 1; overflow-y: auto; padding: 30px 36px 40px; }
+main::-webkit-scrollbar { width: 10px; } main::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; }
+.page { display: none; max-width: 1060px; animation: fade .25s; }
+.page.on { display: block; }
+@keyframes fade { from { opacity: 0; transform: translateY(6px); } }
+h1 { font-size: 26px; margin: 0 0 4px; font-weight: 700; }
+.sub { color: var(--muted); margin: 0 0 24px; }
+h2 { font-size: 15px; margin: 0 0 14px; font-weight: 600; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; margin-bottom: 18px; }
+.grid { display: grid; gap: 18px; }
+.g2 { grid-template-columns: 1fr 1fr; } .g3 { grid-template-columns: repeat(3, 1fr); }
+.hint { color: var(--muted); font-size: 12.5px; }
+.note { background: rgba(255,181,71,.08); border: 1px solid rgba(255,181,71,.25); color: #f3d6a8; padding: 11px 14px;
+  border-radius: 10px; font-size: 12.5px; margin-top: 12px; }
+
+/* controls */
+.btn { border: 0; border-radius: 10px; padding: 10px 18px; background: var(--panel2); cursor: pointer; font-weight: 600;
+  transition: .15s; border: 1px solid var(--line); }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--grad); border: 0; color: #fff; box-shadow: 0 6px 20px -8px var(--accent); }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn.small { padding: 7px 12px; font-size: 12.5px; }
+.row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.setting { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 0;
+  border-top: 1px solid var(--line); }
+.setting:first-of-type { border-top: 0; padding-top: 2px; }
+.setting .t b { display: block; font-weight: 600; } .setting .t span { color: var(--muted); font-size: 12.5px; }
+.switch { position: relative; width: 44px; height: 24px; flex: none; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch i { position: absolute; inset: 0; background: #2a2e40; border-radius: 12px; transition: .2s; cursor: pointer; }
+.switch i::after { content: ""; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; transition: .2s; }
+.switch input:checked + i { background: var(--accent); }
+.switch input:checked + i::after { transform: translateX(20px); }
+.seg { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+.seg button { border: 0; background: none; padding: 7px 14px; border-radius: 8px; cursor: pointer; color: var(--muted); font-weight: 500; }
+.seg button.on { background: var(--panel2); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+.range { display: flex; align-items: center; gap: 12px; min-width: 260px; }
+.range output { min-width: 58px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+input[type=range] { -webkit-appearance: none; flex: 1; height: 6px; border-radius: 3px; background: #2a2e40; outline: none; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; border: 4px solid var(--accent); cursor: pointer; }
+input[type=color] { -webkit-appearance: none; width: 42px; height: 32px; border: 1px solid var(--line); border-radius: 8px;
+  background: none; padding: 2px; cursor: pointer; }
+input[type=color]::-webkit-color-swatch-wrapper { padding: 0; } input[type=color]::-webkit-color-swatch { border: 0; border-radius: 6px; }
+select, input[type=text] { background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; outline: none; }
+
+/* choice tiles */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.tile { background: var(--panel2); border: 1.5px solid var(--line); border-radius: 13px; padding: 14px; cursor: pointer;
+  transition: .15s; position: relative; }
+.tile:hover { border-color: #3b4060; transform: translateY(-1px); }
+.tile.on { border-color: var(--accent); background: linear-gradient(160deg, rgba(124,92,255,.18), rgba(0,224,255,.05)); }
+.tile.on::after { content: "✓"; position: absolute; right: 12px; top: 10px; color: var(--accent2); font-weight: 700; }
+.tile b { display: block; margin-bottom: 3px; } .tile span { color: var(--muted); font-size: 12px; }
+.swatch { height: 46px; border-radius: 9px; margin-bottom: 11px; }
+
+/* screen preview */
+.screen-wrap { display: flex; gap: 26px; align-items: center; }
+.bezel { width: 236px; height: 236px; flex: none; border-radius: 22px; padding: 18px; background: linear-gradient(145deg, #23263a, #0b0c12);
+  box-shadow: inset 0 0 0 1px #2e3350, 0 20px 50px -20px #000; position: relative; }
+.bezel img, .bezel .empty { width: 200px; height: 200px; border-radius: 6px; image-rendering: pixelated; display: block; background: #000; }
+.bezel .empty { display: grid; place-items: center; color: #444a66; font-size: 12px; text-align: center; }
+.loading { position: absolute; inset: 18px; border-radius: 6px; background: rgba(0,0,0,.72); display: none;
+  flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 12.5px; }
+.loading.on { display: flex; }
+.bar { width: 140px; height: 6px; border-radius: 3px; background: #2a2e40; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--grad); width: 0; transition: width .3s; }
+.stat { display: flex; justify-content: space-between; padding: 9px 0; border-top: 1px solid var(--line); gap: 16px; }
+.stat:first-child { border-top: 0; } .stat span { color: var(--muted); } .stat b { font-weight: 600; text-align: right;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+.log { background: #0a0b10; border-radius: 10px; padding: 12px 14px; font: 12px/1.6 Consolas, monospace; color: #9aa0bd;
+  height: 190px; overflow-y: auto; user-select: text; white-space: pre-wrap; }
+
+/* keyboard */
+.kbd-wrap { background: radial-gradient(ellipse at top, #1d2033, #0c0d13); border-radius: 18px; padding: 22px; border: 1px solid var(--line);
+  display: flex; justify-content: center; }
+.kbd { display: flex; flex-direction: column; gap: 5px; padding: 14px; border-radius: 14px; background: #08090d;
+  box-shadow: inset 0 0 0 1px #1f2233, 0 25px 60px -25px #000; }
+.krow { display: flex; gap: 5px; }
+.key { --c: 0,0,0; width: calc(var(--w) * 46px + (var(--w) - 1) * 5px); height: 44px; border-radius: 7px; background: #15171f;
+  position: relative; cursor: pointer; display: grid; place-items: center; font-size: 11px; color: #cfd3e6; font-weight: 600;
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,.45), 0 0 14px rgba(var(--c), .55), inset 0 0 0 1px rgba(var(--c), .9);
+  background-image: linear-gradient(rgba(var(--c), .38), rgba(var(--c), .2)); transition: box-shadow .05s; }
+.key:hover { outline: 2px solid #fff3; }
+.krow:first-child .key { height: 34px; }
+.palette { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.palette .p { width: 28px; height: 28px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; }
+.palette .p.on { border-color: #fff; }
+.hwgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.hwgrid .tile { padding: 10px 12px; } .hwgrid .tile b { margin: 0; font-weight: 500; font-size: 13px; }
+
+/* apps */
+.app { display: flex; align-items: center; gap: 14px; padding: 11px 0; border-top: 1px solid var(--line); }
+.app:first-child { border-top: 0; }
+.badge { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; flex: none; }
+.app .name { flex: 1; font-weight: 500; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 20px; padding: 5px 8px 5px 13px; font-size: 12.5px;
+  display: flex; gap: 6px; align-items: center; }
+.chip button { border: 0; background: none; cursor: pointer; color: var(--muted); padding: 0 4px; }
+.toast { position: fixed; bottom: 22px; right: 26px; background: var(--panel2); border: 1px solid var(--accent); border-radius: 12px;
+  padding: 12px 18px; box-shadow: 0 12px 40px -10px #000; transform: translateY(120px); transition: .3s; z-index: 9; }
+.toast.on { transform: none; }
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand"><div class="logo">AK</div><div><b>AK820 Studio</b><span>AJAZZ AK820 Pro</span></div></div>
+  <a data-page="home" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/></svg>Главная</a>
+  <a data-page="screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 15l3-3 2 2 3-4"/></svg>Экран</a>
+  <a data-page="light"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="11" rx="2"/><path d="M6 11h1M10 11h1M14 11h1M18 11h0M8 14h8"/></svg>Подсветка</a>
+  <a data-page="notify"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 1112 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 004 0"/></svg>Уведомления</a>
+  <a data-page="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>Настройки</a>
+  <div class="conn"><div class="dot" id="dot"></div><div id="connText">Поиск клавиатуры…</div></div>
+</nav>
+
+<main>
+<!-- HOME -->
+<section class="page on" id="home">
+  <h1>Главная</h1><p class="sub">Что сейчас на экране клавиатуры и как она работает.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h2>Экран клавиатуры</h2>
+      <div class="screen-wrap">
+        <div class="bezel"><div class="empty" id="noPreview">Экран появится<br>после первого обновления</div><img id="preview" hidden>
+          <div class="loading" id="loading"><div>Загрузка на клавиатуру</div><div class="bar"><i id="barFill"></i></div><div id="barText">0%</div></div></div>
+        <div style="flex:1;min-width:0">
+          <div class="hint">Сейчас показано</div>
+          <div id="screenTitle" style="font-weight:600;font-size:15px;margin:2px 0 18px;overflow:hidden;text-overflow:ellipsis">—</div>
+          <div class="row"><button class="btn small" onclick="api('refresh_screen');toast('Экран обновится через пару секунд')">Обновить экран</button>
+          <button class="btn small" onclick="api('sync_time');toast('Часы синхронизированы')">Синхр. часы</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Состояние</h2>
+      <div class="stat"><span>Клавиатура</span><b id="stConn">—</b></div>
+      <div class="stat"><span>Сейчас играет</span><b id="stTrack">ничего</b></div>
+      <div class="stat"><span>Подсветка</span><b id="stLight">—</b></div>
+      <div class="stat"><span>Обновлений экрана за час</span><b id="stUploads">0</b></div>
+      <div class="row" style="margin-top:14px"><button class="btn small" onclick="testNotice('Discord')">Проверить уведомление</button></div>
+    </div>
+  </div>
+  <div class="card"><h2>Быстрая смена подсветки</h2><div class="tiles" id="quickFx"></div></div>
+  <div class="card"><h2>Журнал</h2><div class="log" id="log"></div></div>
+</section>
+
+<!-- SCREEN -->
+<section class="page" id="screen">
+  <h1>Экран</h1><p class="sub">Что показывать на экранчике 128×128.</p>
+  <div class="card">
+    <h2>Когда ничего не играет</h2>
+    <div class="tiles" id="idleTiles"></div>
+    <div id="customRow" class="row" style="margin-top:14px"><button class="btn small" onclick="chooseImage()">Выбрать картинку или GIF…</button><span class="hint" id="customPath"></span></div>
+    <div class="setting" style="margin-top:12px"><div class="t"><b>Менять цитату каждые</b><span>Новая мотивационная цитата через этот интервал</span></div>
+      <div class="range"><input type="range" min="5" max="180" step="5" data-cfg="quote_minutes"><output data-out="quote_minutes" data-unit=" мин"></output></div></div>
+    <div class="setting" id="clockRow"><div class="t"><b>Обновлять часы каждые</b><span>Экран показывает время на момент обновления</span></div>
+      <div class="range"><input type="range" min="1" max="30" data-cfg="clock_minutes"><output data-out="clock_minutes" data-unit=" мин"></output></div></div>
+    <div class="note" id="clockNote">Часы на картинке не идут сами: экран обновляется загрузкой, и при каждой загрузке клавиатура на секунду показывает «Loading» и пишет во флеш-память. Обновляйте часы не чаще раза в 5 минут. Точные часы есть во встроенном режиме экрана самой клавиатуры, и программа синхронизирует их при запуске.</div>
+  </div>
+  <div class="card">
+    <h2>Музыка</h2>
+    <div class="setting"><div class="t"><b>Показывать играющую музыку</b><span>Обложка, название и исполнитель</span></div><label class="switch"><input type="checkbox" data-cfg="screen_music"><i></i></label></div>
+    <div class="setting"><div class="t"><b>Откуда брать музыку</b><span>Браузер и видеоплееры тоже сообщают Windows, что «играет», из-за чего экран менялся при каждом видео</span></div>
+      <div class="seg" data-seg="music_sources"><button data-v="music">Только плееры</button><button data-v="all">Всё, включая браузер</button></div></div>
+    <div class="setting"><div class="t"><b>Музыка на паузе</b><span>Через сколько вернуть экран ожидания</span></div>
+      <select data-cfg="pause_to_idle_minutes" data-num><option value="0">Не возвращать</option><option value="1">1 минута</option><option value="2">2 минуты</option><option value="5">5 минут</option><option value="15">15 минут</option></select></div>
+  </div>
+  <div class="card">
+    <h2>Скорость обновления</h2>
+    <div class="setting"><div class="t"><b>Анимированные экраны</b><span>Музыка и уведомления с анимацией. Каждый кадр добавляет ~1 с к «Loading»</span></div><label class="switch"><input type="checkbox" data-cfg="animated_screens"><i></i></label></div>
+    <div class="setting"><div class="t"><b>Пауза перед сменой экрана</b><span>Если быстро переключать треки или программы, экран не будет дёргаться</span></div>
+      <div class="range"><input type="range" min="2" max="20" data-cfg="settle_seconds"><output data-out="settle_seconds" data-unit=" с"></output></div></div>
+    <div class="note">«Loading» рисует сама клавиатура, пока картинка записывается в её память: у AK820 Pro с этой прошивкой нет способа обновить экран без него. Поэтому программа обновляет экран как можно реже и по умолчанию одним кадром, так что «Loading» мелькает примерно на секунду.</div>
+  </div>
+</section>
+
+<!-- LIGHT -->
+<section class="page" id="light">
+  <h1>Подсветка</h1><p class="sub">Эффекты программы работают, пока она запущена. Встроенные эффекты сохраняются в самой клавиатуре.</p>
+  <div class="kbd-wrap"><div class="kbd" id="kbd"></div></div>
+  <div class="card" style="margin-top:18px"><h2>Эффект</h2><div class="tiles" id="fxTiles"></div></div>
+  <div class="card" id="softCard">
+    <h2>Настройки эффекта</h2>
+    <div class="setting" id="colorsRow"><div class="t"><b>Цвета</b><span id="colorsHint">Основной и второй цвет</span></div>
+      <div class="row"><input type="color" data-cfg="light_color"><input type="color" data-cfg="light_color2" id="color2"></div></div>
+    <div class="setting" id="vizRow"><div class="t"><b>Стиль эквалайзера</b><span>Звук берётся с устройства вывода по умолчанию</span></div>
+      <div class="seg" data-seg="visualizer_style"><button data-v="rainbow">Радуга</button><button data-v="fire">Огонь</button></div></div>
+    <div class="setting" id="speedRow"><div class="t"><b>Скорость</b></div><div class="range"><input type="range" min="1" max="5" data-cfg="light_speed"><output data-out="light_speed"></output></div></div>
+    <div class="setting"><div class="t"><b>Яркость</b></div><div class="range"><input type="range" min="10" max="100" step="5" data-cfg="light_brightness"><output data-out="light_brightness" data-unit="%"></output></div></div>
+  </div>
+  <div class="card" id="hwCard">
+    <h2>Встроенный эффект клавиатуры</h2>
+    <div class="hwgrid" id="hwGrid"></div>
+    <div class="setting" style="margin-top:10px"><div class="t"><b>Цвет</b><span>Или радуга</span></div>
+      <div class="row"><input type="color" data-cfg="hw_color"><span class="hint">Радуга</span><label class="switch"><input type="checkbox" data-cfg="hw_rainbow"><i></i></label></div></div>
+    <div class="setting"><div class="t"><b>Яркость</b></div><div class="range"><input type="range" min="0" max="5" data-cfg="hw_brightness"><output data-out="hw_brightness"></output></div></div>
+    <div class="setting"><div class="t"><b>Скорость</b></div><div class="range"><input type="range" min="0" max="5" data-cfg="hw_speed"><output data-out="hw_speed"></output></div></div>
+    <div class="setting"><div class="t"><b>Направление</b></div><div class="seg" data-seg="hw_direction" data-num><button data-v="0">→</button><button data-v="1">←</button></div></div>
+    <div class="row" style="margin-top:14px"><button class="btn primary" onclick="api('apply_hardware');toast('Эффект записан в клавиатуру')">Применить к клавиатуре</button></div>
+  </div>
+  <div class="card">
+    <h2>Свои цвета клавиш</h2>
+    <p class="hint" style="margin-top:-6px">Выберите цвет и нажимайте на клавиши на картинке выше. Раскладка сохраняется в клавиатуру и работает даже без программы.</p>
+    <div class="row" style="justify-content:space-between">
+      <div class="palette" id="palette"></div>
+      <div class="row"><button class="btn small" onclick="paintMode(!painting)" id="paintBtn">Начать раскраску</button>
+        <button class="btn small" onclick="fillAll()">Залить всё</button><button class="btn small" onclick="clearKeys()">Очистить</button>
+        <button class="btn primary small" onclick="saveKeys()">Сохранить в клавиатуру</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- NOTIFY -->
+<section class="page" id="notify">
+  <h1>Уведомления</h1><p class="sub">Сообщения из почты, Teams, Discord и мессенджеров на экране и подсветке.</p>
+  <div class="card">
+    <div class="setting"><div class="t"><b>Показывать на экране</b><span>Карточка с отправителем и текстом</span></div><label class="switch"><input type="checkbox" data-cfg="screen_notifications"><i></i></label></div>
+    <div class="setting"><div class="t"><b>Мигать подсветкой</b><span>Клавиши вспыхивают цветом приложения</span></div><label class="switch"><input type="checkbox" data-cfg="key_flash_on_notice"><i></i></label></div>
+    <div class="setting"><div class="t"><b>Держать на экране</b></div><div class="range"><input type="range" min="5" max="120" step="5" data-cfg="notice_seconds"><output data-out="notice_seconds" data-unit=" с"></output></div></div>
+    <div class="setting"><div class="t"><b>От всех приложений</b><span>Иначе только от отмеченных ниже</span></div><label class="switch"><input type="checkbox" id="allApps"><i></i></label></div>
+  </div>
+  <div class="card" id="appsCard">
+    <h2>Приложения</h2>
+    <div id="apps"></div>
+    <div class="setting"><div class="t"><b>Другое приложение</b><span>Часть названия, например «viber» или «вконтакте»</span></div>
+      <div class="row"><input type="text" id="newApp" placeholder="название"><button class="btn small" onclick="addApp()">Добавить</button></div></div>
+    <div class="chips" id="customApps"></div>
+  </div>
+  <div class="note">Программа видит только то, что попадает в центр уведомлений Windows. Если у приложения там уведомления выключены или включён режим «Не беспокоить», на клавиатуре их не будет.</div>
+</section>
+
+<!-- SETTINGS -->
+<section class="page" id="settings">
+  <h1>Настройки</h1><p class="sub">Запуск и ограничения.</p>
+  <div class="card">
+    <div class="setting"><div class="t"><b>Запускать вместе с Windows</b><span>Программа стартует свёрнутой в трей</span></div><label class="switch"><input type="checkbox" id="autostart"><i></i></label></div>
+    <div class="setting"><div class="t"><b>Открывать свёрнутой</b><span>Окно не показывается при запуске, только значок у часов</span></div><label class="switch"><input type="checkbox" data-cfg="start_minimized"><i></i></label></div>
+    <div class="setting"><div class="t"><b>Синхронизировать часы при подключении</b></div><label class="switch"><input type="checkbox" data-cfg="sync_time_on_start"><i></i></label></div>
+    <div class="setting"><div class="t"><b>Не больше обновлений экрана в час</b><span>Бережёт флеш-память клавиатуры</span></div>
+      <div class="range"><input type="range" min="10" max="60" step="5" data-cfg="max_uploads_per_hour"><output data-out="max_uploads_per_hour"></output></div></div>
+  </div>
+  <div class="card">
+    <h2>Нагрузка на клавиатуру</h2>
+    <div class="setting"><div class="t"><b>Режим работы</b><span>Щадящий режим реже пишет в память клавиатуры и меньше нагружает её по USB</span></div>
+      <div class="seg" data-seg="keyboard_load"><button data-v="normal">Обычный</button><button data-v="gentle">Щадящий</button></div></div>
+    <p class="hint" style="margin:6px 0 0">Вся тяжёлая работа и так идёт на компьютере: картинки рисуются, сжимаются и проверяются в его памяти, а клавиатура получает только готовый результат.
+      Щадящий режим дополнительно:</p>
+    <ul class="hint" style="margin:6px 0 0;padding-left:20px;line-height:1.7">
+      <li>не больше 15 обновлений экрана в час, пауза перед сменой экрана от 8 секунд;</li>
+      <li>часы на экране обновляются не чаще раза в 10 минут, экраны без анимации;</li>
+      <li>серия сообщений из одного приложения не перезаписывает экран ради счётчика «+N»;</li>
+      <li>подсветка: 10 кадров в секунду вместо 20, одинаковые кадры не отправляются повторно.</li>
+    </ul>
+    <div class="note">Память и процессор самой клавиатуры нельзя расширить за счёт компьютера: это закрытая прошивка, она хранит картинку только у себя. В обоих режимах программа не загружает картинку, которая уже есть на клавиатуре, например после перезапуска.</div>
+  </div>
+  <div class="card"><h2>О программе</h2><p class="hint" style="margin:0">AK820 Studio. Работает только при подключении клавиатуры USB-кабелем. Закрытие окна сворачивает программу в трей; полностью выйти можно через значок у часов → «Выход».<br>Протокол клавиатуры: проект hcristosm/ak820-linux (MIT).</p></div>
+</section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+let D, cfg, painting = false, brush = "#7c5cff", custom = {};
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const api = (m, ...a) => window.pywebview.api[m](...a);
+const keyEls = {};
+
+function toast(t) { const e = $("#toast"); e.textContent = t; e.classList.add("on"); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove("on"), 2400); }
+async function set(k, v) { cfg[k] = v; cfg = await api("update", {[k]: v}); sync(); }
+
+window.addEventListener("pywebviewready", async () => {
+  D = await api("init"); cfg = D.cfg; custom = {...cfg.custom_keys};
+  buildNav(); buildIdle(); buildFx(); buildHw(); buildKbd(); buildPalette(); buildApps(); bindInputs();
+  $("#autostart").checked = D.autostart;
+  $("#autostart").onchange = async e => { e.target.checked = await api("set_autostart", e.target.checked); toast(e.target.checked ? "Автозапуск включён" : "Автозапуск выключен"); };
+  sync(); poll(); requestAnimationFrame(animate);
+});
+
+function buildNav() {
+  $$("nav a").forEach(a => a.onclick = () => {
+    $$("nav a").forEach(x => x.classList.toggle("on", x === a));
+    $$(".page").forEach(p => p.classList.toggle("on", p.id === a.dataset.page));
+  });
+}
+
+const IDLE_DESC = {quote: "Мотивация, приветствие и дата", quote_clock: "Крупное время, дата и цитата", matrix: "Зелёный цифровой дождь",
+  plasma: "Переливающиеся цвета", stars: "Полёт сквозь звёзды", custom: "Ваша GIF или фото"};
+const IDLE_BG = {quote: "linear-gradient(135deg,#3a1a6a,#0b3c78)", quote_clock: "linear-gradient(135deg,#0c4a4a,#14245a)",
+  matrix: "repeating-linear-gradient(90deg,#021,#021 6px,#0a5 7px,#021 8px)", plasma: "conic-gradient(#f0a,#0ff,#ff0,#f0a)",
+  stars: "radial-gradient(circle at 30% 40%,#fff 1px,transparent 2px),radial-gradient(circle at 70% 60%,#fff 1px,transparent 2px),#05051a",
+  custom: "repeating-conic-gradient(#2a2e40 0 25%,#1c1f2d 0 50%) 0/16px 16px"};
+function buildIdle() {
+  $("#idleTiles").innerHTML = D.idle.map(i => `<div class="tile" data-idle="${i.id}"><div class="swatch" style="background:${IDLE_BG[i.id]}"></div><b>${i.title}</b><span>${IDLE_DESC[i.id]}</span></div>`).join("");
+  $$("[data-idle]").forEach(t => t.onclick = async () => {
+    if (t.dataset.idle === "custom" && !cfg.idle_custom) return chooseImage();
+    set("idle_style", t.dataset.idle);
+  });
+}
+async function chooseImage() { const p = await api("choose_image"); if (p) { cfg = await api("update", {}); sync(); toast("Картинка будет загружена на экран"); } }
+
+const FX_BG = {visualizer: "linear-gradient(0deg,#0f0 0 30%,#ff0 30% 60%,#f00 60%)", wave: "linear-gradient(90deg,red,orange,yellow,lime,cyan,blue,magenta)",
+  aurora: "linear-gradient(120deg,#7c5cff,#00e0ff,#7c5cff)", breathing: "radial-gradient(circle,#7c5cff,#120a2a)",
+  reactive: "radial-gradient(circle at 40% 50%,#fff 0 6%,#7c5cff 7% 12%,transparent 13% 20%,#00e0ff33 21% 23%,#0b0c12 24%)",
+  hardware: "linear-gradient(135deg,#ff2060,#ffb547)"};
+function buildFx() {
+  const html = D.effects.map(f => `<div class="tile" data-fx="${f.id}"><div class="swatch" style="background:${FX_BG[f.id]}"></div><b>${f.title}</b><span>${f.desc}</span></div>`).join("");
+  $("#fxTiles").innerHTML = html; $("#quickFx").innerHTML = html;
+  $$("[data-fx]").forEach(t => t.onclick = () => t.dataset.fx === "hardware" ? (api("apply_hardware"), toast("Включён встроенный эффект клавиатуры"), cfg.light_mode = "hardware", sync()) : set("light_mode", t.dataset.fx));
+}
+function buildHw() {
+  $("#hwGrid").innerHTML = D.hw_modes.map(m => `<div class="tile" data-hw="${m.id}"><b>${m.name}</b></div>`).join("");
+  $$("[data-hw]").forEach(t => t.onclick = () => set("hw_mode", +t.dataset.hw));
+}
+function buildKbd() {
+  $("#kbd").innerHTML = D.layout.map(r => `<div class="krow">${r.map(k => `<div class="key" data-k="${k.idx}" style="--w:${k.w}">${k.label}</div>`).join("")}</div>`).join("");
+  $$(".key").forEach(e => {
+    keyEls[e.dataset.k] = e;
+    e.onmousedown = () => { if (painting) { custom[e.dataset.k] = brush; } else { ripples.push([+e.dataset.k, performance.now()]); } };
+    e.onmouseenter = ev => { if (painting && ev.buttons) custom[e.dataset.k] = brush; };
+  });
+  // key positions for the preview effects, same as the keyboard's grid
+  D.pos = {}; D.layout.forEach((r, y) => r.forEach((k, x) => D.pos[k.idx] = [x / (r.length - 1), y / (D.layout.length - 1)]));
+}
+const PAL = ["#ff2060", "#ff7a00", "#ffd000", "#2ad480", "#00e0ff", "#2f6bff", "#7c5cff", "#ff4fd8", "#ffffff", "#000000"];
+function buildPalette() {
+  $("#palette").innerHTML = PAL.map(c => `<div class="p" style="background:${c}" data-c="${c}"></div>`).join("") + `<input type="color" id="brushPick" value="${brush}">`;
+  $$(".p").forEach(p => p.onclick = () => { brush = p.dataset.c; $$(".p").forEach(x => x.classList.toggle("on", x === p)); paintMode(true); });
+  $("#brushPick").oninput = e => { brush = e.target.value; $$(".p").forEach(x => x.classList.remove("on")); paintMode(true); };
+}
+function paintMode(on) { painting = on; $("#paintBtn").textContent = on ? "Готово" : "Начать раскраску"; $("#paintBtn").classList.toggle("primary", on); }
+function fillAll() { Object.keys(keyEls).forEach(k => custom[k] = brush); paintMode(true); }
+function clearKeys() { custom = {}; paintMode(true); }
+function saveKeys() { api("apply_keys", custom); cfg.light_mode = "hardware"; paintMode(false); sync(); toast("Цвета клавиш записаны в клавиатуру"); }
+
+function buildApps() {
+  $("#apps").innerHTML = D.apps.map(a => `<div class="app"><div class="badge" style="background:${a.color}">${a.label}</div><div class="name">${a.title}</div>
+    <button class="btn small" onclick="testNotice('${a.title}')">Проверить</button><label class="switch"><input type="checkbox" data-app="${a.match}"><i></i></label></div>`).join("");
+  $$("[data-app]").forEach(c => c.onchange = () => {
+    const list = cfg.notify_apps.filter(x => x !== c.dataset.app); if (c.checked) list.push(c.dataset.app); set("notify_apps", list);
+  });
+  $("#allApps").onchange = e => set("notify_apps", e.target.checked ? [] : D.apps.map(a => a.match));
+}
+function addApp() { const v = $("#newApp").value.trim().toLowerCase(); if (!v) return; $("#newApp").value = "";
+  if (!cfg.notify_apps.includes(v)) set("notify_apps", [...cfg.notify_apps, v]); }
+function testNotice(app) { api("test_notice", app); toast("Тестовое уведомление отправлено на клавиатуру"); }
+
+function bindInputs() {
+  $$("[data-cfg]").forEach(el => {
+    const k = el.dataset.cfg, ev = el.type === "range" || el.type === "color" ? "input" : "change";
+    el.addEventListener(ev, () => {
+      const v = el.type === "checkbox" ? el.checked : el.type === "range" || "num" in el.dataset ? +el.value : el.value;
+      cfg[k] = v; showOut(k);
+      clearTimeout(el._t); el._t = setTimeout(() => set(k, v), el.type === "range" || el.type === "color" ? 250 : 0);
+    });
+  });
+  $$("[data-seg]").forEach(s => s.querySelectorAll("button").forEach(b => b.onclick = () => set(s.dataset.seg, "num" in s.dataset ? +b.dataset.v : b.dataset.v)));
+}
+function showOut(k) { const o = $(`[data-out="${k}"]`); if (o) o.textContent = cfg[k] + (o.dataset.unit || ""); }
+
+function sync() {
+  $$("[data-cfg]").forEach(el => { const k = el.dataset.cfg; if (el.type === "checkbox") el.checked = !!cfg[k]; else el.value = cfg[k]; showOut(k); });
+  $$("[data-seg]").forEach(s => s.querySelectorAll("button").forEach(b => b.classList.toggle("on", String(cfg[s.dataset.seg]) === b.dataset.v)));
+  $$("[data-idle]").forEach(t => t.classList.toggle("on", t.dataset.idle === cfg.idle_style));
+  $$("[data-fx]").forEach(t => t.classList.toggle("on", t.dataset.fx === cfg.light_mode));
+  $$("[data-hw]").forEach(t => t.classList.toggle("on", +t.dataset.hw === cfg.hw_mode));
+  $("#customPath").textContent = cfg.idle_custom ? cfg.idle_custom.split(/[\\/]/).pop() : "";
+  const qc = cfg.idle_style === "quote_clock"; $("#clockRow").style.display = qc ? "" : "none"; $("#clockNote").style.display = qc ? "" : "none";
+  const m = cfg.light_mode;
+  $("#softCard").style.display = m === "hardware" ? "none" : "";
+  $("#vizRow").style.display = m === "visualizer" ? "" : "none";
+  $("#colorsRow").style.display = ["aurora", "breathing", "reactive"].includes(m) ? "" : "none";
+  $("#color2").style.display = m === "breathing" ? "none" : "";
+  $("#colorsHint").textContent = m === "reactive" ? "Цвет клавиши и цвет волны" : m === "breathing" ? "Цвет свечения" : "Два цвета для переливов";
+  $("#speedRow").style.display = ["wave", "aurora", "breathing"].includes(m) ? "" : "none";
+  const all = cfg.notify_apps.length === 0; $("#allApps").checked = all; $("#appsCard").style.opacity = all ? .45 : 1;
+  $$("[data-app]").forEach(c => c.checked = all || cfg.notify_apps.includes(c.dataset.app));
+  const known = D.apps.map(a => a.match);
+  $("#customApps").innerHTML = cfg.notify_apps.filter(a => !known.includes(a)).map(a => `<span class="chip">${a}<button onclick="set('notify_apps', cfg.notify_apps.filter(x => x !== '${a}'))">✕</button></span>`).join("");
+  $("#stLight").textContent = (D.effects.find(f => f.id === m) || {}).title || m;
+}
+
+let lastPreview = null, logLen = 0;
+async function poll() {
+  try {
+    const s = await api("status");
+    $("#dot").classList.toggle("ok", s.connected);
+    $("#connText").textContent = s.connected ? "AK820 Pro подключена" : "Подключите USB-кабель";
+    $("#stConn").textContent = s.connected ? "Подключена по USB" : "Не найдена";
+    $("#stTrack").textContent = s.track ? `${s.track.title}${s.track.artist ? " — " + s.track.artist : ""}${s.track.counted ? "" : " (не показывается)"}` : "ничего";
+    $("#stUploads").textContent = `${s.uploads_hour} из ${s.uploads_limit}`;
+    $("#screenTitle").textContent = s.screen || "—";
+    if (s.preview && s.preview !== lastPreview) { lastPreview = s.preview; $("#preview").src = s.preview; $("#preview").hidden = false; $("#noPreview").hidden = true; }
+    $("#loading").classList.toggle("on", !!s.progress);
+    if (s.progress) { const p = Math.round(100 * s.progress[0] / s.progress[1]); $("#barFill").style.width = p + "%"; $("#barText").textContent = p + "%"; }
+    if (s.logs.length !== logLen || s.logs.at(-1) !== $("#log").lastLine) {
+      const l = $("#log"), atEnd = l.scrollTop + l.clientHeight > l.scrollHeight - 20;
+      l.textContent = s.logs.join("\n"); l.lastLine = s.logs.at(-1); logLen = s.logs.length; if (atEnd) l.scrollTop = l.scrollHeight;
+    }
+  } catch (e) {}
+  setTimeout(poll, 700);
+}
+
+// ---- live keyboard preview (approximates what the effects do on the real keys)
+const ripples = [];
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+function hsv(h) { const f = n => { const k = (n + h * 6) % 6; return 255 * (1 - Math.max(0, Math.min(k, 4 - k, 1))); }; return [f(5), f(3), f(1)]; }
+function animate(t) {
+  if (!D) return requestAnimationFrame(animate);
+  const s = t / 1000, m = cfg.light_mode, sp = .4 + .3 * cfg.light_speed, br = cfg.light_brightness / 100;
+  const c1 = hex(cfg.light_color), c2 = hex(cfg.light_color2);
+  for (const [k, el] of Object.entries(keyEls)) {
+    const [x, y] = D.pos[k]; let c;
+    if (painting || (m === "hardware" && Object.keys(custom).length)) c = custom[k] ? hex(custom[k]) : [0, 0, 0];
+    else if (m === "wave") c = hsv(((x * .9 + y * .2 - s * .15 * sp) % 1 + 1) % 1);
+    else if (m === "aurora") { const q = .5 + .25 * Math.sin(x * 5 + s * sp) + .25 * Math.sin(y * 4 - x * 2 + s * sp * .7); c = c1.map((a, i) => a + (c2[i] - a) * q); }
+    else if (m === "breathing") { const q = .08 + .92 * (.5 - .5 * Math.cos(s * sp * 1.2)); c = c1.map(a => a * q); }
+    else if (m === "visualizer") { const lvl = .5 + .45 * Math.sin(s * 3 + x * 9) * Math.sin(s * 1.7 + x * 4); c = 1 - y <= lvl ? (cfg.visualizer_style === "fire" ? [255, 200 * y, 0] : hsv((x * .8 + s * .05) % 1)) : [0, 0, 0]; }
+    else if (m === "reactive") {
+      c = c1.map(a => a / 8);
+      for (const [rk, rt] of ripples) { const age = (t - rt) / 1000, [px, py] = D.pos[rk] || [0, 0];
+        const d = Math.hypot(x - px, (y - py) * .35), q = +k === rk ? Math.max(0, 1 - age / .6) : Math.max(0, 1 - Math.abs(d - age * 1.4) / .06) * Math.max(0, 1 - age / 1.2);
+        if (q > 0) c = c.map((a, i) => Math.max(a, (+k === rk ? c1 : c2)[i] * q)); }
+    } else { const hc = cfg.hw_rainbow ? hsv(((x - s * .1) % 1 + 1) % 1) : hex(cfg.hw_color); c = cfg.hw_mode === 0 ? [0, 0, 0] : hc.map(a => a * (cfg.hw_brightness / 5)); }
+    if (m !== "hardware" && !painting) c = c.map(a => a * br);
+    el.style.setProperty("--c", c.map(Math.round).join(","));
+  }
+  while (ripples.length && t - ripples[0][1] > 1300) ripples.shift();
+  if (m === "reactive" && !painting && Math.random() < .015) ripples.push([+Object.keys(keyEls)[Math.floor(Math.random() * 80)], t]);
+  requestAnimationFrame(animate);
+}
+</script>
+</body>
+</html>

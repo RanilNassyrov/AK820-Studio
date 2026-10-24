@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+# personal: settings, log (contains notification texts), last uploaded screen
+config.json
+ak820.log
+.screen_state

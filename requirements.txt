@@ -1,0 +1,14 @@
+hidapi==0.15.0
+pillow==13.0.0
+numpy==2.4.6
+PyAudioWPatch==0.2.12.9
+pywebview==6.2.1
+pystray==0.19.5
+winrt-runtime==4.0.2
+winrt-Windows.ApplicationModel==4!10.0.28000.2705
+winrt-Windows.Foundation==4!10.0.28000.2705
+winrt-Windows.Foundation.Collections==4!10.0.28000.2705
+winrt-Windows.Media.Control==4!10.0.28000.2705
+winrt-Windows.Storage.Streams==4!10.0.28000.2705
+winrt-Windows.UI.Notifications==4!10.0.28000.2705
+winrt-Windows.UI.Notifications.Management==4!10.0.28000.2705
