@@ -259,11 +259,14 @@ def quote_card(seed, clock=False, now=None):
 
 
 def load_image(path):
+    from itertools import islice
     from PIL import ImageSequence
     from .keyboard import MAX_FRAMES
     im = Image.open(path)
+    # the iterator yields the same object seeked to each frame, so convert every frame while
+    # iterating; collecting the iterator first would give N copies of the last frame
     return [(ImageOps.fit(fr.convert("RGB"), (S, S)), fr.info.get("duration", 100) or 100)
-            for fr in list(ImageSequence.Iterator(im))[:MAX_FRAMES]]
+            for fr in islice(ImageSequence.Iterator(im), MAX_FRAMES)]
 
 
 def matrix(n=12):
