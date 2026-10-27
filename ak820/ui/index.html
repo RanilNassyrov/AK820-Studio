@@ -224,7 +224,9 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
       <div class="row"><input type="color" data-cfg="light_color"><input type="color" data-cfg="light_color2" id="color2"></div></div>
     <div class="setting" id="vizRow"><div class="t"><b>Стиль эквалайзера</b><span>Звук берётся с устройства вывода по умолчанию</span></div>
       <div class="seg" data-seg="visualizer_style"><button data-v="rainbow">Радуга</button><button data-v="fire">Огонь</button></div></div>
-    <div class="setting" id="speedRow"><div class="t"><b>Скорость</b></div><div class="range"><input type="range" min="1" max="5" data-cfg="light_speed"><output data-out="light_speed"></output></div></div>
+    <div class="setting" id="screenRow"><div class="t"><b>Как брать цвета с экрана</b><span>По зонам: каждая клавиша повторяет свою часть монитора. Один цвет: вся клавиатура — главный цвет картинки</span></div>
+      <div class="seg" data-seg="screen_light_style"><button data-v="zones">По зонам</button><button data-v="single">Один цвет</button></div></div>
+    <div class="setting" id="speedRow"><div class="t"><b id="speedTitle">Скорость</b></div><div class="range"><input type="range" min="1" max="5" data-cfg="light_speed"><output data-out="light_speed"></output></div></div>
     <div class="setting"><div class="t"><b>Яркость</b></div><div class="range"><input type="range" min="10" max="100" step="5" data-cfg="light_brightness"><output data-out="light_brightness" data-unit="%"></output></div></div>
   </div>
   <div class="card" id="hwCard">
@@ -339,6 +341,7 @@ async function chooseImage() { const p = await api("choose_image"); if (p) { cfg
 const FX_BG = {visualizer: "linear-gradient(0deg,#0f0 0 30%,#ff0 30% 60%,#f00 60%)", wave: "linear-gradient(90deg,red,orange,yellow,lime,cyan,blue,magenta)",
   aurora: "linear-gradient(120deg,#7c5cff,#00e0ff,#7c5cff)", breathing: "radial-gradient(circle,#7c5cff,#120a2a)",
   reactive: "radial-gradient(circle at 40% 50%,#fff 0 6%,#7c5cff 7% 12%,transparent 13% 20%,#00e0ff33 21% 23%,#0b0c12 24%)",
+  screen: "linear-gradient(90deg,#1d4ed8 0 25%,#f97316 25% 50%,#16a34a 50% 75%,#e11d48 75%)",
   hardware: "linear-gradient(135deg,#ff2060,#ffb547)"};
 function buildFx() {
   const html = D.effects.map(f => `<div class="tile" data-fx="${f.id}"><div class="swatch" style="background:${FX_BG[f.id]}"></div><b>${f.title}</b><span>${f.desc}</span></div>`).join("");
@@ -409,7 +412,9 @@ function sync() {
   $("#colorsRow").style.display = ["aurora", "breathing", "reactive"].includes(m) ? "" : "none";
   $("#color2").style.display = m === "breathing" ? "none" : "";
   $("#colorsHint").textContent = m === "reactive" ? "Цвет клавиши и цвет волны" : m === "breathing" ? "Цвет свечения" : "Два цвета для переливов";
-  $("#speedRow").style.display = ["wave", "aurora", "breathing"].includes(m) ? "" : "none";
+  $("#speedRow").style.display = ["wave", "aurora", "breathing", "screen"].includes(m) ? "" : "none";
+  $("#speedTitle").textContent = m === "screen" ? "Скорость реакции" : "Скорость";
+  $("#screenRow").style.display = m === "screen" ? "" : "none";
   const all = cfg.notify_apps.length === 0; $("#allApps").checked = all; $("#appsCard").style.opacity = all ? .45 : 1;
   $$("[data-app]").forEach(c => c.checked = all || cfg.notify_apps.includes(c.dataset.app));
   const known = D.apps.map(a => a.match);
@@ -417,10 +422,11 @@ function sync() {
   $("#stLight").textContent = (D.effects.find(f => f.id === m) || {}).title || m;
 }
 
-let lastPreview = null, logLen = 0;
+let lastPreview = null, logLen = 0, screenPreview = null;
 async function poll() {
   try {
     const s = await api("status");
+    screenPreview = s.light_preview;
     $("#dot").classList.toggle("ok", s.connected);
     $("#connText").textContent = s.connected ? "AK820 Pro подключена" : "Подключите USB-кабель";
     $("#stConn").textContent = s.connected ? "Подключена по USB" : "Не найдена";
@@ -453,6 +459,7 @@ function animate(t) {
     else if (m === "aurora") { const q = .5 + .25 * Math.sin(x * 5 + s * sp) + .25 * Math.sin(y * 4 - x * 2 + s * sp * .7); c = c1.map((a, i) => a + (c2[i] - a) * q); }
     else if (m === "breathing") { const q = .08 + .92 * (.5 - .5 * Math.cos(s * sp * 1.2)); c = c1.map(a => a * q); }
     else if (m === "visualizer") { const lvl = .5 + .45 * Math.sin(s * 3 + x * 9) * Math.sin(s * 1.7 + x * 4); c = 1 - y <= lvl ? (cfg.visualizer_style === "fire" ? [255, 200 * y, 0] : hsv((x * .8 + s * .05) % 1)) : [0, 0, 0]; }
+    else if (m === "screen") c = screenPreview && screenPreview[k] ? hex(screenPreview[k]) : [0, 0, 0];
     else if (m === "reactive") {
       c = c1.map(a => a / 8);
       for (const [rk, rt] of ripples) { const age = (t - rt) / 1000, [px, py] = D.pos[rk] || [0, 0];

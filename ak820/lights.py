@@ -9,6 +9,7 @@ import numpy as np
 
 from .hook import KeyPresses
 from .keyboard import key_grid
+from .screencap import Capture, zones
 
 BANDS = 16
 RATE_HINT = 48000
@@ -20,6 +21,7 @@ EFFECTS = {
     "aurora": ("Северное сияние", "Переливы двух ваших цветов"),
     "breathing": ("Дыхание", "Плавное затухание и вспышка одним цветом"),
     "reactive": ("Реакция на нажатия", "Нажатая клавиша вспыхивает, от неё расходится круг"),
+    "screen": ("Цвета экрана", "Клавиши повторяют цвета того, что на мониторе"),
     "hardware": ("Встроенный эффект", "Один из 20 эффектов самой клавиатуры"),
 }
 
@@ -89,6 +91,10 @@ class Lights(threading.Thread):
         self.keys = KeyPresses()
         self.audio_retry = 0.0
         self.sent, self.sent_at = None, 0.0
+        self.capture = Capture()
+        self.ambient = None  # smoothed screen colors, one row per key in self.order
+        self.order = list(self.grid)
+        self.preview = {}  # last frame, for the window's keyboard picture
 
     def flash(self, rgb, seconds=1.6):
         self.flash_color, self.flash_until = rgb, time.monotonic() + seconds
@@ -102,7 +108,12 @@ class Lights(threading.Thread):
                 self.keys.start()
             else:
                 self.keys.stop()
+            if mode != "screen" and self.capture.backend:
+                self.capture.close()  # give the desktop duplication back to Windows
+                self.capture.backend = ""
             frame = self.frame(cfg, mode)
+            if frame:
+                self.preview = frame
             kb = self.get_kb()
             if frame is None or kb is None:
                 time.sleep(0.05)
@@ -161,6 +172,8 @@ class Lights(threading.Thread):
             return {i: tuple(int(c * k) for c in c1) for i in self.grid}
         if mode == "reactive":
             return self.reactive(cfg, now, c1, c2)
+        if mode == "screen":
+            return self.screen_colors(cfg)
         return None
 
     def visualizer(self, cfg, now):
@@ -184,6 +197,30 @@ class Lights(threading.Thread):
             else:
                 out[i] = _hsv((x * 0.8 + now * 0.05) % 1, 0.4 + 0.6 * level)
         return out
+
+    def screen_colors(self, cfg):
+        small = self.capture.latest()
+        if small is None:
+            return None
+        cols, rows = 16, 6
+        cells = zones(small, cols, rows)
+        if cfg["screen_light_style"] == "single":
+            # one color for the whole keyboard: weight bright, saturated areas over gray/black
+            flat = cells.reshape(-1, 3)
+            weight = (flat.max(1) - flat.min(1)) + 0.3 * flat.max(1) + 1
+            target = np.repeat((flat * weight[:, None]).sum(0, keepdims=True) / weight.sum(), len(self.order), 0)
+        else:
+            pos = np.array([self.grid[i] for i in self.order])
+            c = np.rint(pos[:, 0] * (cols - 1)).astype(int)
+            r = np.rint(pos[:, 1] * (rows - 1)).astype(int)
+            target = cells[r, c]
+        # LEDs wash colors out, so push them away from gray
+        gray = target.mean(1, keepdims=True)
+        target = np.clip(gray + (target - gray) * 1.6, 0, 255)
+        # react faster at higher speed; smoothing hides flicker from video and scrolling
+        k = 0.15 + 0.1 * cfg["light_speed"]
+        self.ambient = target if self.ambient is None else self.ambient + (target - self.ambient) * k
+        return {i: tuple(int(v) for v in rgb) for i, rgb in zip(self.order, self.ambient)}
 
     def reactive(self, cfg, now, base, ripple):
         presses = self.keys.recent(1.2)

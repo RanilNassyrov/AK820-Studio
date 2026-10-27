@@ -12,3 +12,5 @@ winrt-Windows.Media.Control==4!10.0.28000.2705
 winrt-Windows.Storage.Streams==4!10.0.28000.2705
 winrt-Windows.UI.Notifications==4!10.0.28000.2705
 winrt-Windows.UI.Notifications.Management==4!10.0.28000.2705
+dxcam==0.3.0
+comtypes==1.4.17

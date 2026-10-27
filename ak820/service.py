@@ -40,6 +40,7 @@ DEFAULTS = {
     "light_speed": 3,
     "light_brightness": 100,
     "visualizer_style": "rainbow",
+    "screen_light_style": "zones",  # "zones": each key copies its part of the monitor; "single"
     "hw_mode": 8,
     "hw_color": "#ff2060",
     "hw_rainbow": True,
@@ -286,6 +287,10 @@ class Service:
                       "counted": self.is_music(t)} if t else None,
             "uploads_hour": len([u for u in self.uploads if time.monotonic() - u < 3600]),
             "uploads_limit": self.limits()["uploads"],
+            # real key colors for the window's keyboard picture (the screen effect can't be faked in JS)
+            "light_preview": {i: "#%02x%02x%02x" % rgb for i, rgb in self.lights.preview.items()}
+            if self.cfg["light_mode"] == "screen" else None,
+            "capture": self.lights.capture.backend,
             "logs": list(self.logs)[-60:],
         }
 
