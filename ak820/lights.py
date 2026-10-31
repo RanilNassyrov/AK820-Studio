@@ -37,7 +37,7 @@ def key_to_led():
             row = []
     leds = {}
     for n, (x, y) in enumerate(qmk.LEDS):
-        leds.setdefault(y // 13, []).append((x, n))
+        leds.setdefault(sum(y >= edge for edge in (12, 25, 35, 46, 57)), []).append((x, n))  # arrows sit lower
     led_rows = [[n for _, n in sorted(leds[k])] for k in sorted(leds)]
     return {key: led for stock, led_row in zip(rows, led_rows) for key, led in zip(stock, led_row)}
 
