@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 # personal: settings, log (contains notification texts), last uploaded screen
 config.json
+# downloaded by install.ps1
+tools/
 ak820.log
 .screen_state
 # downloaded firmware and the flashing tool

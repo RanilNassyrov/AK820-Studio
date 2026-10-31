@@ -11,7 +11,8 @@ import threading
 import time
 from pathlib import Path
 
-from . import render
+from . import qmk, render
+from .gamefps import GameFps
 from .keyboard import Keyboard, NotConnected, screen_blob
 from .screencap import fullscreen_state
 from .lights import Lights, hex_rgb
@@ -49,6 +50,7 @@ DEFAULTS = {
     "screen_dark_level": 12,  # percent of full brightness below which a key stays off
     "gif_max_frames": 24,  # each frame costs ~1.1 s of upload
     "hold_screen_in_games": True,
+    "fps_enabled": True,  # game FPS on the screen; needs the QMK firmware
     "hw_mode": 8,
     "hw_color": "#ff2060",
     "hw_rainbow": True,
@@ -112,6 +114,8 @@ class Service:
         self.held = False  # a fullscreen game is open, so screen uploads wait
         self.report_at = time.monotonic()
         self.lights = Lights(lambda: self.kb, lambda: self.cfg, self.log)
+        self.game = GameFps()
+        self.text_shown, self.text_at = None, 0.0  # QMK: what the screen shows, and when it was sent
 
     # ------------------------------------------------------------ plumbing
 
@@ -147,7 +151,8 @@ class Service:
         if self.kb:
             return
         try:
-            self.kb = Keyboard()
+            path = qmk.find()
+            self.kb = qmk.QmkKeyboard(path) if path else Keyboard()
         except (NotConnected, OSError) as e:
             if self.connected is not None:
                 self.log(str(e).replace("AK820 Pro is on Bluetooth: plug in the USB cable",
@@ -157,7 +162,7 @@ class Service:
             self.connected = None
             return
         self.connected = True
-        self.shown = None
+        self.shown = self.text_shown = None
         self.log("клавиатура подключена")
         if self.cfg["sync_time_on_start"]:
             self.kb.sync_time()
@@ -182,6 +187,43 @@ class Service:
         return {"uploads": min(cfg["max_uploads_per_hour"], 15), "settle": max(cfg["settle_seconds"], 8),
                 "clock": max(cfg["clock_minutes"], 10), "animated": False, "count_more": False}
 
+    def music_visible(self):
+        cfg, t = self.cfg, self.track
+        if not (cfg["screen_music"] and t and self.is_music(t)):
+            return False
+        idle_after = cfg["pause_to_idle_seconds"]
+        return t.playing or not idle_after or bool(
+            self.paused_since and time.time() - self.paused_since < idle_after)
+
+    def text_tick(self):
+        """QMK firmware: nothing goes through flash, so the screen simply follows what is happening.
+        The firmware drops the text after ~3 minutes of silence, hence the keepalive."""
+        now = time.monotonic()
+        self.game.want(self.cfg["fps_enabled"])
+        game = self.game.current() if self.cfg["fps_enabled"] else None
+        if self.notice and now < self.notice_until:
+            n = self.notice
+            wanted = (n.app, " ".join(n.lines), qmk.ICON_NONE)
+            title = f"Уведомление: {n.app}"
+        elif game:
+            wanted = (f"FPS {game[1]}", game[0].removesuffix(".exe"), qmk.ICON_NONE)
+            title = f"FPS игры: {game[1]}"
+        elif self.music_visible():
+            t = self.track
+            icon = qmk.ICON_PLAY if t.playing else qmk.ICON_PAUSE
+            wanted = (t.artist, t.title, icon) if t.artist else (t.title, "", icon)
+            title = f"Музыка: {t.title}"
+        else:
+            wanted, title = None, "Часы клавиатуры"
+        if wanted == self.text_shown and now - self.text_at < 30:
+            return
+        if wanted:
+            self.kb.text(*wanted)
+        else:
+            self.kb.clear_text()
+            self.kb.playback(0)
+        self.text_shown, self.text_at, self.screen_title = wanted, now, title
+
     def desired(self):
         cfg, lim, now = self.cfg, self.limits(), time.time()
         if self.notice and time.monotonic() < self.notice_until:
@@ -190,11 +232,9 @@ class Service:
             return ("notice", n.id if lim["count_more"] else n.app, more), f"Уведомление: {n.app}", \
                 lambda: render.notification(n, more, lim["animated"])
         t = self.track
-        if cfg["screen_music"] and t and self.is_music(t):
-            idle_after = cfg["pause_to_idle_seconds"]
-            if t.playing or not idle_after or (self.paused_since and now - self.paused_since < idle_after):
-                return ("track", t.title, t.artist), f"Музыка: {t.title}", \
-                    lambda: render.now_playing(t, 6 if lim["animated"] else 1)
+        if self.music_visible():
+            return ("track", t.title, t.artist), f"Музыка: {t.title}", \
+                lambda: render.now_playing(t, 6 if lim["animated"] else 1)
         style = cfg["idle_style"]
         seed = int(now // (max(1, cfg["quote_minutes"]) * 60))
         tick = int(now // (max(1, lim["clock"]) * 60)) if style == "quote_clock" else 0
@@ -287,6 +327,14 @@ class Service:
                 for n in fresh:
                     self.on_notice(n)
 
+            if getattr(self.kb, "qmk", False):
+                try:
+                    self.text_tick()
+                except (OSError, ValueError) as e:
+                    self.lost(e)
+                await asyncio.sleep(0.5)
+                continue
+            self.game.want(False)
             key, title, make = self.desired()
             if key != self.want:
                 self.want, self.want_since = key, time.monotonic()
@@ -361,6 +409,9 @@ class Service:
             if self.cfg["light_mode"] == "screen" else None,
             "capture": self.lights.capture.backend,
             "held": self.held,
+            "firmware": ("qmk" if getattr(self.kb, "qmk", False) else "stock") if self.kb else None,
+            "fps": self.game.current() if self.cfg["fps_enabled"] else None,
+            "fps_error": self.game.error if self.cfg["fps_enabled"] else None,
             "exclusive": self.lights.capture.exclusive,
             "logs": list(self.logs)[-60:],
         }
@@ -383,14 +434,16 @@ class Service:
     def apply_hardware(self):
         c = self.cfg
         self.update({"light_mode": "hardware"})
-        if self.kb:
+        if getattr(self.kb, "qmk", False):
+            self.log("на QMK эффекты выбираются на самой клавиатуре: Fn + нажатие ручки")
+        elif self.kb:
             rgb = None if c["hw_rainbow"] else hex_rgb(c["hw_color"])
             self.background(lambda: (self.kb.set_mode(c["hw_mode"], rgb, c["hw_brightness"], c["hw_speed"],
                                                       c["hw_direction"]), self.log("встроенный эффект применён")))
 
     def apply_keys(self, colors):
         self.update({"light_mode": "hardware", "custom_keys": colors})
-        if self.kb:
+        if self.kb and not getattr(self.kb, "qmk", False):
             rgb = {int(i): hex_rgb(c) for i, c in colors.items()}
             self.background(lambda: (self.kb.set_keys(rgb, self.cfg["hw_brightness"]),
                                      self.log("свои цвета клавиш сохранены в клавиатуру")))

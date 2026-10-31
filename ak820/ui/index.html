@@ -174,7 +174,9 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
       <h2>Состояние</h2>
       <div class="stat"><span>Клавиатура</span><b id="stConn">—</b></div>
       <div class="stat"><span>Сейчас играет</span><b id="stTrack">ничего</b></div>
+      <div class="stat"><span>Прошивка</span><b id="stFw">—</b></div>
       <div class="stat"><span>Подсветка</span><b id="stLight">—</b></div>
+      <div class="stat" id="stFpsRow"><span>FPS игры</span><b id="stFps">—</b></div>
       <div class="stat"><span>Обновлений экрана за час</span><b id="stUploads">0</b></div>
       <div class="row" style="margin-top:14px"><button class="btn small" onclick="testNotice('Discord')">Проверить уведомление</button></div>
     </div>
@@ -186,6 +188,9 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
 <!-- SCREEN -->
 <section class="page" id="screen">
   <h1>Экран</h1><p class="sub">Что показывать на экранчике 128×128.</p>
+  <div class="note qmkOnly" style="margin:0 0 18px">На прошивке QMK экран обновляется мгновенно и без «Loading»: две строки латиницей, кириллица передаётся транслитом. Цитаты, анимации и GIF пока работают только на заводской прошивке.</div>
+  <div class="card qmkOnly"><h2>FPS игры</h2>
+    <div class="setting"><div class="t"><b>Показывать FPS на экране клавиатуры</b><span>Число и название активной игры, обновляется раз в полсекунды</span></div><label class="switch"><input type="checkbox" data-cfg="fps_enabled"><i></i></label></div></div>
   <div class="card">
     <h2>Когда ничего не играет</h2>
     <div class="tiles" id="idleTiles"></div>
@@ -219,6 +224,7 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
 <!-- LIGHT -->
 <section class="page" id="light">
   <h1>Подсветка</h1><p class="sub">Эффекты программы работают, пока она запущена. Встроенные эффекты сохраняются в самой клавиатуре.</p>
+  <div class="note qmkOnly" style="margin:0 0 18px">На прошивке QMK из программы пока работает только «Цвета экрана», одним цветом на всю клавиатуру. Цвета по зонам требуют доработки прошивки. Другие эффекты выбираются на клавиатуре: Fn + нажатие ручки.</div>
   <div class="kbd-wrap"><div class="kbd" id="kbd"></div></div>
   <div class="card" style="margin-top:18px"><h2>Эффект</h2><div class="tiles" id="fxTiles"></div></div>
   <div class="card" id="softCard">
@@ -444,6 +450,11 @@ async function poll() {
   try {
     const s = await api("status");
     screenPreview = s.light_preview;
+    const isQmk = s.firmware === "qmk";
+    $$(".qmkOnly").forEach(e => e.style.display = isQmk ? "" : "none");
+    $("#stFw").textContent = isQmk ? "QMK (открытая)" : s.firmware === "stock" ? "Заводская" : "—";
+    $("#stFpsRow").style.display = isQmk && cfg.fps_enabled ? "" : "none";
+    $("#stFps").textContent = s.fps_error || (s.fps ? `${s.fps[1]} — ${s.fps[0]}` : "нет активной игры");
     $("#dot").classList.toggle("ok", s.connected);
     $("#connText").textContent = s.connected ? "AK820 Pro подключена" : "Подключите USB-кабель";
     $("#stConn").textContent = s.connected ? "Подключена по USB" : "Не найдена";

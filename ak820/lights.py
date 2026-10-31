@@ -112,8 +112,31 @@ class Lights(threading.Thread):
                     self.log(f"ошибка подсветки: {type(e).__name__}: {e}")
                 time.sleep(1)
 
+    def qmk_step(self, cfg, kb):
+        """This firmware takes one color for the whole keyboard, not one per key, so the screen
+        effect runs as a single color and the other modes stay on the keyboard's own effects."""
+        self.keys.stop()
+        self._audio(False)
+        screen = cfg["light_mode"] == "screen"
+        self.capture.want(screen)
+        if screen and not self.capture.exclusive:
+            frame = self.screen_colors(dict(cfg, screen_light_style="single"))
+            if frame:
+                self.preview = frame
+                scale = cfg["light_brightness"] / 100
+                try:
+                    kb.solid(tuple(int(c * scale) for c in next(iter(frame.values()))))
+                except (OSError, ValueError):
+                    pass  # unplugged: the service reconnects
+        elif not screen:
+            kb.color = None  # picks the solid effect again next time
+        time.sleep(0.066)
+
     def step(self):
         cfg = self.get_cfg()
+        kb = self.get_kb()
+        if getattr(kb, "qmk", False):
+            return self.qmk_step(cfg, kb)
         mode = cfg["light_mode"]
         self.capture.want(mode == "screen")
         if mode == "screen" and self.capture.exclusive:
