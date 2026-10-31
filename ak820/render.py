@@ -200,11 +200,11 @@ IDLE = {  # style -> title for the UI
 }
 
 
-def idle(style="quote", seed=0, custom=None):
+def idle(style="quote", seed=0, custom=None, max_frames=None):
     if style in ("quote", "quote_clock"):
         return quote_card(seed, clock=style == "quote_clock")
     if style == "custom" and custom:
-        return load_image(custom)
+        return load_image(custom, max_frames)
     return {"matrix": matrix, "plasma": plasma, "stars": stars}.get(style, matrix)()
 
 
@@ -258,15 +258,22 @@ def quote_card(seed, clock=False, now=None):
     return [(im, 500)]
 
 
-def load_image(path):
-    from itertools import islice
+def load_image(path, max_frames=None):
+    """Frames of an image or GIF. Each frame costs ~1.1 s of upload, so a long GIF can be thinned
+    to max_frames: frames are dropped evenly and their time goes to the frames kept, so the
+    animation keeps its speed."""
     from PIL import ImageSequence
     from .keyboard import MAX_FRAMES
     im = Image.open(path)
     # the iterator yields the same object seeked to each frame, so convert every frame while
     # iterating; collecting the iterator first would give N copies of the last frame
-    return [(ImageOps.fit(fr.convert("RGB"), (S, S)), fr.info.get("duration", 100) or 100)
-            for fr in islice(ImageSequence.Iterator(im), MAX_FRAMES)]
+    frames = [(ImageOps.fit(fr.convert("RGB"), (S, S)), fr.info.get("duration", 100) or 100)
+              for fr in ImageSequence.Iterator(im)]
+    limit = min(max_frames or MAX_FRAMES, MAX_FRAMES)
+    if len(frames) <= limit:
+        return frames
+    edges = [i * len(frames) // limit for i in range(limit + 1)]
+    return [(frames[a][0], sum(ms for _, ms in frames[a:b])) for a, b in zip(edges, edges[1:])]
 
 
 def matrix(n=12):

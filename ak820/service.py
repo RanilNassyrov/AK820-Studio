@@ -41,6 +41,11 @@ DEFAULTS = {
     "light_brightness": 100,
     "visualizer_style": "rainbow",
     "screen_light_style": "zones",  # "zones": each key copies its part of the monitor; "single"
+    "screen_dark_off": True,
+    "screen_dark_level": 12,  # percent of full brightness below which a key stays off
+    "gif_max_frames": 24,  # each frame costs ~1.1 s of upload
+    "fps_enabled": False,
+    "fps_scale": 144,
     "hw_mode": 8,
     "hw_color": "#ff2060",
     "hw_rainbow": True,
@@ -91,6 +96,10 @@ class Service:
         self.notice, self.notice_more, self.notice_until = None, 0, 0.0
         self.paused_since = None
         self.force = False
+        self.upload = None  # future of the running upload
+        self.uploading = None  # the screen it is sending
+        self.cancel = threading.Event()
+        self.retry_at = 0.0
         self.lights = Lights(lambda: self.kb, lambda: self.cfg, self.log)
 
     # ------------------------------------------------------------ plumbing
@@ -98,7 +107,10 @@ class Service:
     def log(self, msg):
         line = f"{time.strftime('%H:%M:%S')}  {msg}"
         self.logs.append(line)
-        print(line, flush=True)
+        try:
+            print(line, flush=True)
+        except (UnicodeError, ValueError, OSError):
+            pass  # without a console pywebview swaps stdout for a cp1251 devnull: 르세라핌 crashes print
         try:
             with open(ROOT / "ak820.log", "a", encoding="utf-8") as f:
                 f.write(line + "\n")
@@ -176,15 +188,20 @@ class Service:
         seed = int(now // (max(1, cfg["quote_minutes"]) * 60))
         tick = int(now // (max(1, lim["clock"]) * 60)) if style == "quote_clock" else 0
         day = time.strftime("%Y%m%d") if style.startswith("quote") else ""
-        return ("idle", style, seed, tick, day, cfg["idle_custom"]), render.IDLE[style], \
-            lambda: render.idle(style, seed, cfg["idle_custom"])
+        frames = cfg["gif_max_frames"]
+        return ("idle", style, seed, tick, day, cfg["idle_custom"], frames), render.IDLE[style], \
+            lambda: render.idle(style, seed, cfg["idle_custom"], frames)
 
-    def may_upload(self, urgent):
+    def may_upload(self, urgent, essential=False):
         now = time.monotonic()
         self.uploads = [t for t in self.uploads if now - t < 3600]
-        if len(self.uploads) >= self.limits()["uploads"] and not self.force:
+        # the hourly cap is for background refreshes (clock, quotes, animations): a track or message
+        # the user is waiting for must not be dropped, or the screen keeps showing the old one
+        capped = len(self.uploads) >= self.limits()["uploads"]
+        if capped and not self.force and (not essential or self.cfg["keyboard_load"] == "gentle"):
             return False
-        return urgent or self.force or not self.uploads or now - self.uploads[-1] >= 8
+        gap = 3 if essential else 8
+        return urgent or self.force or not self.uploads or now - self.uploads[-1] >= gap
 
     def show(self, key, title, make):
         frames = make()
@@ -200,17 +217,32 @@ class Service:
             return
         t = time.monotonic()
         self.log(f"экран: {title}")
+        self.uploads.append(time.monotonic())
         with UPLOADING:
             self.progress = (0, 1)
             SCREEN_STATE.unlink(missing_ok=True)  # an interrupted upload must not count as done
             try:
-                self.kb.upload_screen(blob, lambda i, n: setattr(self, "progress", (i, n)))
+                done = self.kb.upload_screen(blob, lambda i, n: setattr(self, "progress", (i, n)),
+                                             self.cancel.is_set)
             finally:
                 self.progress = None
-            SCREEN_STATE.write_text(digest)
+            if done:
+                SCREEN_STATE.write_text(digest)
+        if not done:
+            self.log(f"загрузка прервана через {time.monotonic() - t:.1f} с: есть экран новее")
+            self.shown = None
+            return
         self.log(f"экран обновлён за {time.monotonic() - t:.1f} с ({len(frames)} кадр.)")
-        self.uploads.append(time.monotonic())
         self.shown, self.screen_title, self.force = key, title, False
+
+    def finish_upload(self):
+        task, self.upload = self.upload, None
+        e = task.exception()
+        if isinstance(e, OSError):
+            self.lost(e)
+        elif e:
+            self.log(f"ошибка экрана: {type(e).__name__}: {e}")
+            self.retry_at = time.monotonic() + 30  # a broken picture retries slowly, not never
 
     def last_upload(self):
         try:
@@ -248,16 +280,21 @@ class Service:
             if key != self.want:
                 self.want, self.want_since = key, time.monotonic()
             urgent = key[0] == "notice"
+            essential = key[0] in ("notice", "track")
             settled = urgent or time.monotonic() - self.want_since >= self.limits()["settle"]
-            if self.kb and (key != self.shown or self.force) and settled and self.may_upload(urgent):
-                try:
-                    await loop.run_in_executor(None, self.show, key, title, make)
-                except OSError as e:
-                    self.lost(e)
-                except Exception as e:
-                    self.log(f"ошибка экрана: {e}")
-                    self.shown = key  # don't retry a broken picture every second
-            await asyncio.sleep(1)
+            if self.upload and self.upload.done():
+                self.finish_upload()
+            if self.upload:
+                # a long GIF must not hold back a new track: drop it unless it is nearly done
+                left = self.progress[1] - self.progress[0] if self.progress else 0
+                if key != self.uploading and settled and left > 8:
+                    self.cancel.set()
+            elif self.kb and (key != self.shown or self.force) and settled \
+                    and time.monotonic() >= self.retry_at and self.may_upload(urgent, essential):
+                self.cancel.clear()
+                self.uploading = key
+                self.upload = loop.run_in_executor(None, self.show, key, title, make)
+            await asyncio.sleep(0.5 if self.upload else 1)
 
     def wants_app(self, app):
         apps = self.cfg["notify_apps"]
@@ -291,6 +328,7 @@ class Service:
             "light_preview": {i: "#%02x%02x%02x" % rgb for i, rgb in self.lights.preview.items()}
             if self.cfg["light_mode"] == "screen" else None,
             "capture": self.lights.capture.backend,
+            "fps": self.lights.capture.fps if self.cfg["fps_enabled"] else None,
             "logs": list(self.logs)[-60:],
         }
 

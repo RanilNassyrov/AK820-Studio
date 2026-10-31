@@ -95,8 +95,9 @@ class Keyboard:
         p[8], p[9] = count & 0xFF, count >> 8
         self.feature(bytes(p), readback, delay)
 
-    def upload_screen(self, blob, progress=lambda i, n: None):
-        """blob from screen_blob(). Written to the keyboard's flash, so don't call it in a loop."""
+    def upload_screen(self, blob, progress=lambda i, n: None, cancelled=lambda: False):
+        """blob from screen_blob(). Written to the keyboard's flash, so don't call it in a loop.
+        Returns False if cancelled() stopped it: the screen then waits for the next full upload."""
         if self.lcd is None:
             self.lcd = hid.device()
             self.lcd.open_path(_find(0xFF68))
@@ -105,10 +106,14 @@ class Keyboard:
             self.cmd(0x18)
             self.cmd(0x72, n, extra=b"\x01")  # byte 2 = screen slot
             for i in range(n):
+                if cancelled():
+                    self.cmd(0x02)
+                    return False
                 self.lcd.write(b"\0" + blob[i * CHUNK:(i + 1) * CHUNK])
                 self.lcd.read(64, 300)  # vendor waits up to 300 ms for an ack
                 progress(i + 1, n)
             self.cmd(0x02)
+        return True
 
     def set_mode(self, mode, rgb=None, brightness=5, speed=3, direction=0):
         """Built-in effect, saved on the keyboard. rgb=None means rainbow. brightness, speed 0..5."""

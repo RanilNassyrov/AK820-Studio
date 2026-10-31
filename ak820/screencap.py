@@ -5,6 +5,7 @@ in well under a millisecond and returns nothing while the picture hasn't changed
 fallback (remote desktop, unusual drivers); reading the desktop through it costs ~60-80 ms on a
 2560x1440 screen, so it is polled less often."""
 import ctypes
+import threading
 import time
 from ctypes import wintypes
 
@@ -72,53 +73,82 @@ class ScreenSampler:
 
 
 class Capture:
-    """Keeps the latest small (~90x160) RGB picture of the primary monitor."""
+    """Background reader of the primary monitor: keeps a small (~90x160) RGB picture for the
+    screen-color effect and counts frames for the FPS meter.
 
+    Windows reports how many frames piled up since the last read (AccumulatedFrames), so 25 reads
+    a second count every frame up to the monitor's refresh rate. That is the rate the desktop
+    updates: frames a game draws above the refresh rate are not seen, and neither is an exclusive
+    fullscreen game that takes the screen away from desktop duplication.
+    """
+
+    INTERVAL = 0.04
     GDI_INTERVAL = 0.25
+    TINY = (0, 0, 32, 32)  # the counter needs no pixels, so copy as few as dxcam allows
 
     def __init__(self):
         self.cam = self.gdi = None
         self.small = None
         self.backend = ""
-        self.gdi_at = 0.0
+        self.fps = None
+        self.pixels = self.count = False
+        self.thread = None
 
-    def latest(self):
-        if self.cam is None and self.gdi is None:
+    def want(self, pixels, count):
+        """Which results are needed; the reader thread runs only while something is."""
+        self.pixels, self.count = pixels, count
+        if (pixels or count) and not self.thread:
+            self.thread = threading.Thread(target=self._run, daemon=True)
+            self.thread.start()
+        if not count:
+            self.fps = None
+
+    def _open(self):
+        try:
+            import dxcam
+            self.cam = dxcam.create(output_color="BGRA")
+            self.backend = "DXGI"
+        except Exception:
+            self.gdi = ScreenSampler()
+            self.backend = "GDI"
+
+    def _run(self):
+        if not self.cam and not self.gdi:
+            self._open()
+        frames, since, first = 0, time.monotonic(), True
+        while self.pixels or self.count:
+            if self.gdi:
+                self.small = self.gdi.grab()
+                time.sleep(self.GDI_INTERVAL)
+                continue
             try:
-                import dxcam
-                self.cam = dxcam.create(output_color="BGRA")
-                self.backend = "DXGI"
+                # a still screen delivers nothing, and on some drivers that includes the first frame
+                frame = self.cam.grab(region=None if self.pixels else self.TINY)
+                piled = self.cam._duplicator.accumulated_frames  # pinned dxcam==0.3.0
             except Exception:
-                self.gdi = ScreenSampler()
-                self.backend = "GDI"
-        if self.cam is not None:
-            try:
-                frame = self.cam.grab()  # None while the screen hasn't changed
-            except Exception:
-                frame = None
+                time.sleep(1)
+                continue
+            if first:
+                first, piled = False, 0  # counted while nobody was reading
+                since = time.monotonic()
             if frame is not None:
-                step = max(1, frame.shape[1] // 160)
-                self.small = frame[::step, ::step, 2::-1]
-            elif self.small is None:
-                # duplication only delivers a frame once something on screen changes, so a still
-                # desktop needs one slow GDI shot to start from
+                frames += piled
+                if self.pixels and frame.shape[1] > self.TINY[2]:
+                    step = max(1, frame.shape[1] // 160)
+                    self.small = frame[::step, ::step, 2::-1]
+            if self.pixels and self.small is None:
                 gdi = ScreenSampler()
                 self.small = gdi.grab()
                 gdi.close()
-        elif time.monotonic() - self.gdi_at >= self.GDI_INTERVAL:
-            self.small = self.gdi.grab()
-            self.gdi_at = time.monotonic()
-        return self.small
+            elapsed = time.monotonic() - since
+            if elapsed >= 1:
+                self.fps = round(frames / elapsed) if self.count else None
+                frames, since = 0, time.monotonic()
+            time.sleep(self.INTERVAL)
+        self.thread = None
 
-    def close(self):
-        if self.cam is not None:
-            try:
-                self.cam.release()
-            except Exception:
-                pass
-        if self.gdi is not None:
-            self.gdi.close()
-        self.cam = self.gdi = self.small = None
+    def latest(self):
+        return self.small
 
 
 def zones(small, cols, rows):

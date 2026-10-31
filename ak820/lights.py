@@ -8,11 +8,13 @@ import time
 import numpy as np
 
 from .hook import KeyPresses
-from .keyboard import key_grid
+from .keyboard import KEYS, key_grid
 from .screencap import Capture, zones
 
 BANDS = 16
 RATE_HINT = 48000
+FPS_KEYS = [KEYS[f"f{n}"] for n in range(1, 13)]
+FPS_KEYS_N = len(FPS_KEYS)
 
 # light mode -> (title, description) for the UI
 EFFECTS = {
@@ -108,10 +110,10 @@ class Lights(threading.Thread):
                 self.keys.start()
             else:
                 self.keys.stop()
-            if mode != "screen" and self.capture.backend:
-                self.capture.close()  # give the desktop duplication back to Windows
-                self.capture.backend = ""
+            self.capture.want(mode == "screen", cfg["fps_enabled"])
             frame = self.frame(cfg, mode)
+            if cfg["fps_enabled"] and mode != "hardware":
+                frame = self.fps_bar(frame, cfg)
             if frame:
                 self.preview = frame
             kb = self.get_kb()
@@ -214,13 +216,32 @@ class Lights(threading.Thread):
             c = np.rint(pos[:, 0] * (cols - 1)).astype(int)
             r = np.rint(pos[:, 1] * (rows - 1)).astype(int)
             target = cells[r, c]
+        level = target.max(1)  # measured before the color boost, which would brighten dark areas
         # LEDs wash colors out, so push them away from gray
         gray = target.mean(1, keepdims=True)
         target = np.clip(gray + (target - gray) * 1.6, 0, 255)
+        if cfg["screen_dark_off"]:
+            # keys go dark under the threshold, with a short ramp so edges don't blink
+            limit = cfg["screen_dark_level"] / 100 * 255
+            target = target * np.clip((level - limit) / (limit * 0.5 + 1), 0, 1)[:, None]
         # react faster at higher speed; smoothing hides flicker from video and scrolling
         k = 0.15 + 0.1 * cfg["light_speed"]
         self.ambient = target if self.ambient is None else self.ambient + (target - self.ambient) * k
         return {i: tuple(int(v) for v in rgb) for i, rgb in zip(self.order, self.ambient)}
+
+    def fps_bar(self, frame, cfg):
+        """Real-time FPS meter on the F-keys: live frames cost the keyboard's flash nothing, unlike
+        its screen, which takes ~1.7 s and a flash write for every picture."""
+        fps = self.capture.fps
+        if fps is None:
+            return frame
+        out = dict(frame) if frame else {i: (0, 0, 0) for i in self.grid}
+        lit = min(FPS_KEYS_N, round(fps / cfg["fps_scale"] * FPS_KEYS_N))
+        for n, i in enumerate(FPS_KEYS):
+            part = (n + 1) / FPS_KEYS_N
+            color = (255, 30, 30) if part <= 0.34 else (255, 170, 0) if part <= 0.67 else (0, 230, 80)
+            out[i] = color if n < lit else (0, 0, 0)
+        return out
 
     def reactive(self, cfg, now, base, ripple):
         presses = self.keys.recent(1.2)
