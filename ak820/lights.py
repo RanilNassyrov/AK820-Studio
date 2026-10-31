@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 
+from .gamefps import GameFps
 from .hook import KeyPresses
 from .keyboard import KEYS, key_grid
 from .screencap import Capture, zones
@@ -94,6 +95,7 @@ class Lights(threading.Thread):
         self.audio_retry = 0.0
         self.sent, self.sent_at = None, 0.0
         self.capture = Capture()
+        self.game = GameFps()
         self.ambient = None  # smoothed screen colors, one row per key in self.order
         self.order = list(self.grid)
         self.preview = {}  # last frame, for the window's keyboard picture
@@ -110,7 +112,8 @@ class Lights(threading.Thread):
                 self.keys.start()
             else:
                 self.keys.stop()
-            self.capture.want(mode == "screen", cfg["fps_enabled"])
+            self.capture.want(mode == "screen")
+            self.game.want(cfg["fps_enabled"])
             frame = self.frame(cfg, mode)
             if cfg["fps_enabled"] and mode != "hardware":
                 frame = self.fps_bar(frame, cfg)
@@ -232,11 +235,11 @@ class Lights(threading.Thread):
     def fps_bar(self, frame, cfg):
         """Real-time FPS meter on the F-keys: live frames cost the keyboard's flash nothing, unlike
         its screen, which takes ~1.7 s and a flash write for every picture."""
-        fps = self.capture.fps
-        if fps is None:
+        game = self.game.current()
+        if game is None:
             return frame
         out = dict(frame) if frame else {i: (0, 0, 0) for i in self.grid}
-        lit = min(FPS_KEYS_N, round(fps / cfg["fps_scale"] * FPS_KEYS_N))
+        lit = min(FPS_KEYS_N, round(game[1] / cfg["fps_scale"] * FPS_KEYS_N))
         for n, i in enumerate(FPS_KEYS):
             part = (n + 1) / FPS_KEYS_N
             color = (255, 30, 30) if part <= 0.34 else (255, 170, 0) if part <= 0.67 else (0, 230, 80)

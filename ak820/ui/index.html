@@ -248,12 +248,12 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
   </div>
   <div class="card">
     <h2>Счётчик FPS</h2>
-    <div class="setting"><div class="t"><b>Показывать FPS в реальном времени</b><span>Шкала на клавишах F1–F12: красный, жёлтый, зелёный. Число видно на «Главной»</span></div>
+    <div class="setting"><div class="t"><b>Показывать FPS игры в реальном времени</b><span>Шкала на клавишах F1–F12: красный, жёлтый, зелёный. Число и название игры видны на «Главной»</span></div>
       <label class="switch"><input type="checkbox" data-cfg="fps_enabled"><i></i></label></div>
-    <div class="setting"><div class="t"><b>Вся шкала равна</b><span>Поставьте частоту своего монитора</span></div>
+    <div class="setting"><div class="t"><b>Вся шкала равна</b><span>Сколько FPS считать полной шкалой, обычно частота монитора</span></div>
       <div class="seg" data-seg="fps_scale" data-num><button data-v="60">60</button><button data-v="120">120</button><button data-v="144">144</button><button data-v="165">165</button><button data-v="240">240</button></div></div>
     <div class="note">Маленький экран не умеет показывать числа в реальном времени: каждая картинка там — это «Loading» примерно на 1,7 секунды и запись в память. Поэтому FPS выводится на подсветку: она обновляется сразу и память не тратит.<br>
-      Считаются кадры, которые показал рабочий стол Windows, а не кадры самой игры: значение не выше частоты монитора, на высоких частотах может быть немного ниже реального, а эксклюзивный полноэкранный режим игр счётчик может не увидеть. Со встроенными эффектами клавиатуры шкала не работает, нужен эффект программы.</div>
+      FPS измеряет Intel PresentMon: считаются кадры активного окна, то есть игры, в которой вы сейчас находитесь. Со встроенными эффектами клавиатуры шкала не работает, нужен эффект программы.</div>
   </div>
   <div class="card">
     <h2>Свои цвета клавиш</h2>
@@ -448,7 +448,7 @@ async function poll() {
   try {
     const s = await api("status");
     screenPreview = s.light_preview;
-    $("#stFps").textContent = s.fps == null ? "измеряю…" : s.fps;
+    $("#stFps").textContent = s.fps_error || (s.fps ? `${s.fps[1]} — ${s.fps[0]}` : "нет активной игры");
     $("#dot").classList.toggle("ok", s.connected);
     $("#connText").textContent = s.connected ? "AK820 Pro подключена" : "Подключите USB-кабель";
     $("#stConn").textContent = s.connected ? "Подключена по USB" : "Не найдена";

@@ -74,34 +74,24 @@ class ScreenSampler:
 
 class Capture:
     """Background reader of the primary monitor: keeps a small (~90x160) RGB picture for the
-    screen-color effect and counts frames for the FPS meter.
-
-    Windows reports how many frames piled up since the last read (AccumulatedFrames), so 25 reads
-    a second count every frame up to the monitor's refresh rate. That is the rate the desktop
-    updates: frames a game draws above the refresh rate are not seen, and neither is an exclusive
-    fullscreen game that takes the screen away from desktop duplication.
-    """
+    screen-color effect."""
 
     INTERVAL = 0.04
     GDI_INTERVAL = 0.25
-    TINY = (0, 0, 32, 32)  # the counter needs no pixels, so copy as few as dxcam allows
 
     def __init__(self):
         self.cam = self.gdi = None
         self.small = None
         self.backend = ""
-        self.fps = None
-        self.pixels = self.count = False
+        self.running = False
         self.thread = None
 
-    def want(self, pixels, count):
-        """Which results are needed; the reader thread runs only while something is."""
-        self.pixels, self.count = pixels, count
-        if (pixels or count) and not self.thread:
+    def want(self, running):
+        """The reader thread runs only while the effect needs it."""
+        self.running = running
+        if running and not self.thread:
             self.thread = threading.Thread(target=self._run, daemon=True)
             self.thread.start()
-        if not count:
-            self.fps = None
 
     def _open(self):
         try:
@@ -115,35 +105,24 @@ class Capture:
     def _run(self):
         if not self.cam and not self.gdi:
             self._open()
-        frames, since, first = 0, time.monotonic(), True
-        while self.pixels or self.count:
+        while self.running:
             if self.gdi:
                 self.small = self.gdi.grab()
                 time.sleep(self.GDI_INTERVAL)
                 continue
             try:
                 # a still screen delivers nothing, and on some drivers that includes the first frame
-                frame = self.cam.grab(region=None if self.pixels else self.TINY)
-                piled = self.cam._duplicator.accumulated_frames  # pinned dxcam==0.3.0
+                frame = self.cam.grab()
             except Exception:
                 time.sleep(1)
                 continue
-            if first:
-                first, piled = False, 0  # counted while nobody was reading
-                since = time.monotonic()
             if frame is not None:
-                frames += piled
-                if self.pixels and frame.shape[1] > self.TINY[2]:
-                    step = max(1, frame.shape[1] // 160)
-                    self.small = frame[::step, ::step, 2::-1]
-            if self.pixels and self.small is None:
+                step = max(1, frame.shape[1] // 160)
+                self.small = frame[::step, ::step, 2::-1]
+            elif self.small is None:
                 gdi = ScreenSampler()
                 self.small = gdi.grab()
                 gdi.close()
-            elapsed = time.monotonic() - since
-            if elapsed >= 1:
-                self.fps = round(frames / elapsed) if self.count else None
-                frames, since = 0, time.monotonic()
             time.sleep(self.INTERVAL)
         self.thread = None
 

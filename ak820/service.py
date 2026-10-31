@@ -328,7 +328,8 @@ class Service:
             "light_preview": {i: "#%02x%02x%02x" % rgb for i, rgb in self.lights.preview.items()}
             if self.cfg["light_mode"] == "screen" else None,
             "capture": self.lights.capture.backend,
-            "fps": self.lights.capture.fps if self.cfg["fps_enabled"] else None,
+            "fps": self.lights.game.current() if self.cfg["fps_enabled"] else None,
+            "fps_error": self.lights.game.error if self.cfg["fps_enabled"] else None,
             "logs": list(self.logs)[-60:],
         }
 
