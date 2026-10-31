@@ -92,7 +92,7 @@ class Lights(threading.Thread):
         self.audio_retry = 0.0
         self.sent, self.sent_at = None, 0.0
         self.stats = {"sent": 0, "worst_ms": 0}
-        self.capture = Capture()
+        self.capture = Capture(log)
         self.ambient = None  # smoothed screen colors, one row per key in self.order
         self.order = list(self.grid)
         self.preview = {}  # last frame, for the window's keyboard picture
@@ -115,12 +115,14 @@ class Lights(threading.Thread):
     def step(self):
         cfg = self.get_cfg()
         mode = cfg["light_mode"]
+        self.capture.want(mode == "screen")
+        if mode == "screen" and self.capture.exclusive:
+            mode = cfg["screen_fallback"]  # black is all that can be read, so keys would stay off
         self._audio(mode == "visualizer")
         if mode == "reactive":
             self.keys.start()
         else:
             self.keys.stop()
-        self.capture.want(mode == "screen")
         frame = self.frame(cfg, mode)
         if frame:
             self.preview = frame

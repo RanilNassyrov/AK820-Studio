@@ -13,6 +13,7 @@ from pathlib import Path
 
 from . import render
 from .keyboard import Keyboard, NotConnected, screen_blob
+from .screencap import fullscreen_state
 from .lights import Lights, hex_rgb
 from .sources import Media, Notice, Notifications
 
@@ -42,6 +43,7 @@ DEFAULTS = {
     "light_brightness": 100,
     "visualizer_style": "rainbow",
     "screen_light_style": "zones",  # "zones": each key copies its part of the monitor; "single"
+    "screen_fallback": "wave",  # light mode while a game in exclusive fullscreen hides the screen
     "screen_dark_off": True,
     "screen_dark_level": 12,  # percent of full brightness below which a key stays off
     "gif_max_frames": 24,  # each frame costs ~1.1 s of upload
@@ -61,15 +63,6 @@ DEFAULTS = {
 MUSIC_APPS = ("music", "spotify", "aimp", "foobar", "vlc", "winamp", "deezer", "tidal", "itunes", "soundcloud")
 # Uploading takes ~1 s per frame and the keyboard shows "Loading" meanwhile
 UPLOADING = threading.Lock()
-
-
-def fullscreen_state():
-    """Windows' state for the foreground app; 2, 3, 4 and 7 mean something fullscreen covers the
-    screen (busy, Direct3D exclusive, presentation, fullscreen app)."""
-    state = ctypes.c_int()
-    if ctypes.windll.shell32.SHQueryUserNotificationState(ctypes.byref(state)):
-        return 0
-    return state.value
 
 
 def in_fullscreen():
@@ -367,6 +360,7 @@ class Service:
             if self.cfg["light_mode"] == "screen" else None,
             "capture": self.lights.capture.backend,
             "held": self.held,
+            "exclusive": self.lights.capture.exclusive,
             "logs": list(self.logs)[-60:],
         }
 

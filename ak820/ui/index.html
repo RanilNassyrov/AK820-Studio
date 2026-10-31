@@ -229,6 +229,8 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
       <div class="seg" data-seg="visualizer_style"><button data-v="rainbow">Радуга</button><button data-v="fire">Огонь</button></div></div>
     <div class="setting" id="screenRow"><div class="t"><b>Как брать цвета с экрана</b><span>По зонам: каждая клавиша повторяет свою часть монитора. Один цвет: вся клавиатура — главный цвет картинки</span></div>
       <div class="seg" data-seg="screen_light_style"><button data-v="zones">По зонам</button><button data-v="single">Один цвет</button></div></div>
+    <div class="setting" id="fallbackRow"><div class="t"><b>Запасной эффект для игр</b><span>Игра в эксклюзивном полноэкранном режиме скрывает картинку от программы. Чтобы работали цвета игры, выберите в её настройках режим «Без рамки» (Borderless)</span></div>
+      <div class="seg" data-seg="screen_fallback"><button data-v="wave">Волна</button><button data-v="aurora">Сияние</button><button data-v="visualizer">Эквалайзер</button><button data-v="reactive">Нажатия</button></div></div>
     <div class="setting" id="darkRow"><div class="t"><b>Не светить на тёмных цветах</b><span>Клавиши под тёмными участками экрана гаснут</span></div>
       <label class="switch"><input type="checkbox" data-cfg="screen_dark_off"><i></i></label></div>
     <div class="setting" id="darkLevelRow"><div class="t"><b>Порог темноты</b><span>Всё, что темнее этого значения, не подсвечивается</span></div>
@@ -423,6 +425,7 @@ function sync() {
   $("#speedTitle").textContent = m === "screen" ? "Скорость реакции" : "Скорость";
   $("#screenRow").style.display = m === "screen" ? "" : "none";
   $("#darkRow").style.display = m === "screen" ? "" : "none";
+  $("#fallbackRow").style.display = m === "screen" ? "" : "none";
   $("#darkLevelRow").style.display = m === "screen" && cfg.screen_dark_off ? "" : "none";
   $("#gifRow").style.display = cfg.idle_style === "custom" ? "" : "none";
   $("#gifHint").textContent = `Длинная GIF прореживается и сохраняет скорость. Загрузка: около ${Math.round(cfg.gif_max_frames * 1.1)} с, всё это время подсветка стоит`;
@@ -443,6 +446,7 @@ async function poll() {
     $("#stConn").textContent = s.connected ? "Подключена по USB" : "Не найдена";
     $("#stTrack").textContent = s.track ? `${s.track.title}${s.track.artist ? " — " + s.track.artist : ""}${s.track.counted ? "" : " (не показывается)"}` : "ничего";
     $("#stUploads").textContent = `${s.uploads_hour} из ${s.uploads_limit}`;
+    $("#stLight").textContent = (D.effects.find(f => f.id === cfg.light_mode) || {}).title + (s.exclusive ? " (игра скрывает экран, запасной эффект)" : "");
     $("#screenTitle").textContent = s.held ? `${s.screen || "—"} (ждёт окончания игры)` : s.screen || "—";
     if (s.preview && s.preview !== lastPreview) { lastPreview = s.preview; $("#preview").src = s.preview; $("#preview").hidden = false; $("#noPreview").hidden = true; }
     $("#loading").classList.toggle("on", !!s.progress);

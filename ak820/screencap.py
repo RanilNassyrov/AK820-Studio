@@ -36,6 +36,15 @@ gdi32.DeleteObject.argtypes = (wintypes.HGDIOBJ,)
 gdi32.DeleteDC.argtypes = (wintypes.HDC,)
 
 
+def fullscreen_state():
+    """Windows' state for the foreground app; 2, 3, 4 and 7 mean something fullscreen covers the
+    screen (busy, Direct3D exclusive, presentation, fullscreen app)."""
+    state = ctypes.c_int()
+    if ctypes.windll.shell32.SHQueryUserNotificationState(ctypes.byref(state)):
+        return 0
+    return state.value
+
+
 def boost_thread():
     """A game keeps every core busy: at normal priority a lighting frame took 186-395 ms instead of
     60. These threads sleep nearly all the time, so raising them costs the game almost nothing."""
@@ -89,9 +98,13 @@ class Capture:
     GDI_INTERVAL = 0.25
     STALE = 2  # seconds without a frame before asking GDI, in case duplication has stopped working
 
-    def __init__(self):
+    MAX_ERRORS = 25  # about a second of failed reads before reopening the capture
+
+    def __init__(self, log=print):
+        self.log = log
         self.cam = self.gdi = None
         self.small = None
+        self.exclusive = False  # a game in exclusive fullscreen: only black can be read
         self.backend = ""
         self.running = False
         self.thread = None
@@ -114,20 +127,47 @@ class Capture:
             self.gdi = ScreenSampler()
             self.backend = "GDI"
 
+    def _close_cam(self):
+        if self.cam:
+            try:
+                self.cam.release()
+            except Exception:
+                pass
+        self.cam = None
+
     def _run(self):
         boost_thread()
-        if not self.cam and not self.gdi:
-            self._open()
+        errors = 0
         while self.running:
+            exclusive = fullscreen_state() == 3
+            if exclusive != self.exclusive:
+                self.exclusive = exclusive
+                self.log("игра в эксклюзивном полноэкранном режиме: экран недоступен, запасной эффект"
+                         if exclusive else "экран снова доступен")
+            if exclusive:
+                # the game owns the display, reads give black or errors, so don't touch it
+                self._close_cam()
+                time.sleep(0.25)
+                continue
+            if not self.cam and not self.gdi:
+                self._open()
             if self.gdi:
                 self.small = self.gdi.grab()
                 time.sleep(self.GDI_INTERVAL)
                 continue
             try:
                 frame = self.cam.grab()
-            except Exception:
+                errors = 0
+            except Exception as e:
                 frame = None
+                errors += 1
                 self.stats["errors"] += 1
+                if errors >= self.MAX_ERRORS:  # duplication died: only a new one helps
+                    self.log(f"захват экрана перезапущен: {type(e).__name__}: {e}")
+                    self._close_cam()
+                    errors = 0
+                    time.sleep(1)
+                    continue
             now = time.monotonic()
             if frame is not None:
                 step = max(1, frame.shape[1] // 160)
@@ -143,6 +183,7 @@ class Capture:
                 self.last_frame = now
                 self.stats["gdi"] += 1
             time.sleep(self.INTERVAL)
+        self.exclusive = False
         self.thread = None
 
     def latest(self):
