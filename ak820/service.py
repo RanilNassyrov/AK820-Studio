@@ -162,7 +162,8 @@ class Service:
             self.connected = None
             return
         self.connected = True
-        self.shown = self.text_shown = None
+        self.shown = None
+        self.text_shown = ()  # unknown: clears whatever was left on the screen
         self.log("клавиатура подключена")
         if self.cfg["sync_time_on_start"]:
             self.kb.sync_time()
@@ -222,7 +223,30 @@ class Service:
         else:
             self.kb.clear_text()
             self.kb.playback(0)
+        if wanted != self.text_shown:
+            self.log(f"экран: {title}")
         self.text_shown, self.text_at, self.screen_title = wanted, now, title
+
+    def upload_gif(self, path):
+        """QMK: the GIF goes to the keyboard's own flash and plays there with Fn+G. Lighting and
+        text keep working during the upload, unlike on the stock firmware."""
+        kb = self.kb
+        if not getattr(kb, "qmk", False) or self.progress:
+            return
+        self.log(f"загрузка GIF: {Path(path).name}")
+        self.progress = (0, 1)
+        try:
+            frames = render.load_image(path, self.cfg["gif_max_frames"])
+            blob, picked = render.animation_blob(frames, qmk.FRAME_MS)
+            buf = io.BytesIO()
+            render.save_gif([(im, qmk.FRAME_MS) for im in picked], buf, fmt="GIF")
+            self.preview = "data:image/gif;base64," + base64.b64encode(buf.getvalue()).decode()
+            t = time.monotonic()
+            kb.write_flash(qmk.ANIM_SLOT, blob, lambda d, n: setattr(self, "progress", (d, n)))
+            key = "включается Fn+G" if kb.bind_anim_key() else "Fn+G занят, назначьте Anim в VIA"
+            self.log(f"GIF на клавиатуре: {len(picked)} кадр. за {time.monotonic() - t:.0f} с, {key}")
+        finally:
+            self.progress = None
 
     def desired(self):
         cfg, lim, now = self.cfg, self.limits(), time.time()
@@ -332,6 +356,8 @@ class Service:
                     self.text_tick()
                 except (OSError, ValueError) as e:
                     self.lost(e)
+                except Exception as e:  # must not end this loop: the screen would just go quiet
+                    self.log(f"ошибка экрана: {type(e).__name__}: {e}")
                 await asyncio.sleep(0.5)
                 continue
             self.game.want(False)

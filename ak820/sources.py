@@ -37,7 +37,13 @@ class Media:
     async def current(self):
         if self.mgr is None:
             self.mgr = await MediaManager.request_async()
-        s = self.mgr.get_current_session()
+        # the "current" session is only the last one Windows focused: a paused browser tab can hold
+        # it while a player is actually playing, so a playing session always wins
+        current = self.mgr.get_current_session()
+        playing = [x for x in self.mgr.get_sessions()
+                   if x.get_playback_info() and x.get_playback_info().playback_status == Status.PLAYING]
+        s = current if current and any(x.source_app_user_model_id == current.source_app_user_model_id
+                                       for x in playing) else (playing[0] if playing else current)
         if not s:
             return None
         p = await s.try_get_media_properties_async()

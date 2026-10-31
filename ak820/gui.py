@@ -99,6 +99,12 @@ class Api:
         self._s.update({"idle_style": "custom", "idle_custom": res[0]})
         return res[0]
 
+    def upload_gif(self):
+        res = self._window.create_file_dialog(webview.OPEN_DIALOG, file_types=("GIF (*.gif)", "Картинки (*.png;*.jpg;*.jpeg;*.webp)"))
+        if res:
+            self._s.background(self._s.upload_gif, res[0])
+        return bool(res)
+
     def set_autostart(self, on):
         if on:
             target = Path(sys.executable).with_name("pythonw.exe")

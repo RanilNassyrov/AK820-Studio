@@ -189,6 +189,11 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
 <section class="page" id="screen">
   <h1>Экран</h1><p class="sub">Что показывать на экранчике 128×128.</p>
   <div class="note qmkOnly" style="margin:0 0 18px">На прошивке QMK экран обновляется мгновенно и без «Loading»: две строки латиницей, кириллица передаётся транслитом. Цитаты, анимации и GIF пока работают только на заводской прошивке.</div>
+  <div class="card qmkOnly"><h2>Своя GIF на экране</h2>
+    <p class="hint" style="margin-top:-6px">GIF записывается в память клавиатуры и играет сама, даже без программы. Включить и выключить: Fn+G. Скорость прошивки постоянная, 10 кадров в секунду.</p>
+    <div class="setting"><div class="t"><b>Кадров не больше</b><span>Примерно 15 секунд загрузки на кадр: 24 кадра занимают 6 минут. Подсветка и текст в это время работают</span></div>
+      <div class="range"><input type="range" min="4" max="140" step="2" data-cfg="gif_max_frames"><output data-out="gif_max_frames"></output></div></div>
+    <div class="row" style="margin-top:12px"><button class="btn primary" onclick="api('upload_gif')">Выбрать и загрузить GIF…</button></div></div>
   <div class="card qmkOnly"><h2>FPS игры</h2>
     <div class="setting"><div class="t"><b>Показывать FPS на экране клавиатуры</b><span>Число и название активной игры, обновляется раз в полсекунды</span></div><label class="switch"><input type="checkbox" data-cfg="fps_enabled"><i></i></label></div></div>
   <div class="card">

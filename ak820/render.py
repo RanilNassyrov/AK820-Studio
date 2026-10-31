@@ -276,6 +276,24 @@ def load_image(path, max_frames=None):
     return [(frames[a][0], sum(ms for _, ms in frames[a:b])) for a, b in zip(edges, edges[1:])]
 
 
+def animation_blob(frames, frame_ms):
+    """Frames as the firmware's animation slot: frame count, padding to 0x100, then RGB565. It plays
+    at a fixed speed, so frames are picked by time to keep the original tempo."""
+    from .keyboard import rgb565
+    total = sum(ms for _, ms in frames)
+    count = max(1, min(255, round(total / frame_ms)))
+    picked, at, i = [], 0, 0
+    for n in range(count):
+        target = n * total / count
+        while i < len(frames) - 1 and at + frames[i][1] <= target:
+            at += frames[i][1]
+            i += 1
+        picked.append(frames[i][0])
+    head = bytearray(256)
+    head[0] = len(picked)
+    return bytes(head) + b"".join(rgb565(im) for im in picked), picked
+
+
 def matrix(n=12):
     rnd = random.Random(7)
     f = font(10, mono=True)
