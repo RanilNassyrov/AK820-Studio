@@ -175,7 +175,6 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
       <div class="stat"><span>Клавиатура</span><b id="stConn">—</b></div>
       <div class="stat"><span>Сейчас играет</span><b id="stTrack">ничего</b></div>
       <div class="stat"><span>Подсветка</span><b id="stLight">—</b></div>
-      <div class="stat" id="stFpsRow"><span>FPS</span><b id="stFps">—</b></div>
       <div class="stat"><span>Обновлений экрана за час</span><b id="stUploads">0</b></div>
       <div class="row" style="margin-top:14px"><button class="btn small" onclick="testNotice('Discord')">Проверить уведомление</button></div>
     </div>
@@ -210,6 +209,7 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
   <div class="card">
     <h2>Скорость обновления</h2>
     <div class="setting"><div class="t"><b>Анимированные экраны</b><span>Музыка и уведомления с анимацией. Каждый кадр добавляет ~1 с к «Loading»</span></div><label class="switch"><input type="checkbox" data-cfg="animated_screens"><i></i></label></div>
+    <div class="setting"><div class="t"><b>Не обновлять экран в играх</b><span>Пока открыта полноэкранная игра или видео, экран ждёт: во время загрузки клавиатура не может менять подсветку, и она замирает</span></div><label class="switch"><input type="checkbox" data-cfg="hold_screen_in_games"><i></i></label></div>
     <div class="setting"><div class="t"><b>Пауза перед сменой экрана</b><span>Если быстро переключать треки или программы, экран не будет дёргаться</span></div>
       <div class="range"><input type="range" min="2" max="20" data-cfg="settle_seconds"><output data-out="settle_seconds" data-unit=" с"></output></div></div>
     <div class="note">«Loading» рисует сама клавиатура, пока картинка записывается в её память: у AK820 Pro с этой прошивкой нет способа обновить экран без него. Поэтому программа обновляет экран как можно реже и по умолчанию одним кадром, так что «Loading» мелькает примерно на секунду.</div>
@@ -245,15 +245,6 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
     <div class="setting"><div class="t"><b>Скорость</b></div><div class="range"><input type="range" min="0" max="5" data-cfg="hw_speed"><output data-out="hw_speed"></output></div></div>
     <div class="setting"><div class="t"><b>Направление</b></div><div class="seg" data-seg="hw_direction" data-num><button data-v="0">→</button><button data-v="1">←</button></div></div>
     <div class="row" style="margin-top:14px"><button class="btn primary" onclick="api('apply_hardware');toast('Эффект записан в клавиатуру')">Применить к клавиатуре</button></div>
-  </div>
-  <div class="card">
-    <h2>Счётчик FPS</h2>
-    <div class="setting"><div class="t"><b>Показывать FPS игры в реальном времени</b><span>Шкала на клавишах F1–F12: красный, жёлтый, зелёный. Число и название игры видны на «Главной»</span></div>
-      <label class="switch"><input type="checkbox" data-cfg="fps_enabled"><i></i></label></div>
-    <div class="setting"><div class="t"><b>Вся шкала равна</b><span>Сколько FPS считать полной шкалой, обычно частота монитора</span></div>
-      <div class="seg" data-seg="fps_scale" data-num><button data-v="60">60</button><button data-v="120">120</button><button data-v="144">144</button><button data-v="165">165</button><button data-v="240">240</button></div></div>
-    <div class="note">Маленький экран не умеет показывать числа в реальном времени: каждая картинка там — это «Loading» примерно на 1,7 секунды и запись в память. Поэтому FPS выводится на подсветку: она обновляется сразу и память не тратит.<br>
-      FPS измеряет Intel PresentMon: считаются кадры активного окна, то есть игры, в которой вы сейчас находитесь. Со встроенными эффектами клавиатуры шкала не работает, нужен эффект программы.</div>
   </div>
   <div class="card">
     <h2>Свои цвета клавиш</h2>
@@ -433,9 +424,8 @@ function sync() {
   $("#screenRow").style.display = m === "screen" ? "" : "none";
   $("#darkRow").style.display = m === "screen" ? "" : "none";
   $("#darkLevelRow").style.display = m === "screen" && cfg.screen_dark_off ? "" : "none";
-  $("#stFpsRow").style.display = cfg.fps_enabled ? "" : "none";
   $("#gifRow").style.display = cfg.idle_style === "custom" ? "" : "none";
-  $("#gifHint").textContent = `Длинная GIF прореживается и сохраняет скорость. Загрузка: около ${Math.round(cfg.gif_max_frames * 1.1)} с`;
+  $("#gifHint").textContent = `Длинная GIF прореживается и сохраняет скорость. Загрузка: около ${Math.round(cfg.gif_max_frames * 1.1)} с, всё это время подсветка стоит`;
   const all = cfg.notify_apps.length === 0; $("#allApps").checked = all; $("#appsCard").style.opacity = all ? .45 : 1;
   $$("[data-app]").forEach(c => c.checked = all || cfg.notify_apps.includes(c.dataset.app));
   const known = D.apps.map(a => a.match);
@@ -448,13 +438,12 @@ async function poll() {
   try {
     const s = await api("status");
     screenPreview = s.light_preview;
-    $("#stFps").textContent = s.fps_error || (s.fps ? `${s.fps[1]} — ${s.fps[0]}` : "нет активной игры");
     $("#dot").classList.toggle("ok", s.connected);
     $("#connText").textContent = s.connected ? "AK820 Pro подключена" : "Подключите USB-кабель";
     $("#stConn").textContent = s.connected ? "Подключена по USB" : "Не найдена";
     $("#stTrack").textContent = s.track ? `${s.track.title}${s.track.artist ? " — " + s.track.artist : ""}${s.track.counted ? "" : " (не показывается)"}` : "ничего";
     $("#stUploads").textContent = `${s.uploads_hour} из ${s.uploads_limit}`;
-    $("#screenTitle").textContent = s.screen || "—";
+    $("#screenTitle").textContent = s.held ? `${s.screen || "—"} (ждёт окончания игры)` : s.screen || "—";
     if (s.preview && s.preview !== lastPreview) { lastPreview = s.preview; $("#preview").src = s.preview; $("#preview").hidden = false; $("#noPreview").hidden = true; }
     $("#loading").classList.toggle("on", !!s.progress);
     if (s.progress) { const p = Math.round(100 * s.progress[0] / s.progress[1]); $("#barFill").style.width = p + "%"; $("#barText").textContent = p + "%"; }

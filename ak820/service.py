@@ -3,6 +3,7 @@ the settings. The window (gui.py) only reads status() and calls the action metho
 import asyncio
 import base64
 import collections
+import ctypes
 import hashlib
 import io
 import json
@@ -44,8 +45,7 @@ DEFAULTS = {
     "screen_dark_off": True,
     "screen_dark_level": 12,  # percent of full brightness below which a key stays off
     "gif_max_frames": 24,  # each frame costs ~1.1 s of upload
-    "fps_enabled": False,
-    "fps_scale": 144,
+    "hold_screen_in_games": True,
     "hw_mode": 8,
     "hw_color": "#ff2060",
     "hw_rainbow": True,
@@ -61,6 +61,14 @@ DEFAULTS = {
 MUSIC_APPS = ("music", "spotify", "aimp", "foobar", "vlc", "winamp", "deezer", "tidal", "itunes", "soundcloud")
 # Uploading takes ~1 s per frame and the keyboard shows "Loading" meanwhile
 UPLOADING = threading.Lock()
+
+
+def in_fullscreen():
+    """True while a fullscreen app (game, fullscreen video) covers the screen."""
+    state = ctypes.c_int()
+    if ctypes.windll.shell32.SHQueryUserNotificationState(ctypes.byref(state)):
+        return False
+    return state.value in (2, 3, 4, 7)  # busy, Direct3D fullscreen, presentation, fullscreen app
 
 
 def load_config():
@@ -100,6 +108,7 @@ class Service:
         self.uploading = None  # the screen it is sending
         self.cancel = threading.Event()
         self.retry_at = 0.0
+        self.held = False  # a fullscreen game is open, so screen uploads wait
         self.lights = Lights(lambda: self.kb, lambda: self.cfg, self.log)
 
     # ------------------------------------------------------------ plumbing
@@ -282,14 +291,16 @@ class Service:
             urgent = key[0] == "notice"
             essential = key[0] in ("notice", "track")
             settled = urgent or time.monotonic() - self.want_since >= self.limits()["settle"]
+            # the keyboard can't take live lighting during an upload, so games get neither
+            self.held = self.cfg["hold_screen_in_games"] and in_fullscreen() and not self.force
             if self.upload and self.upload.done():
                 self.finish_upload()
             if self.upload:
                 # a long GIF must not hold back a new track: drop it unless it is nearly done
                 left = self.progress[1] - self.progress[0] if self.progress else 0
-                if key != self.uploading and settled and left > 8:
+                if (self.held or (key != self.uploading and settled)) and left > 8:
                     self.cancel.set()
-            elif self.kb and (key != self.shown or self.force) and settled \
+            elif self.kb and not self.held and (key != self.shown or self.force) and settled \
                     and time.monotonic() >= self.retry_at and self.may_upload(urgent, essential):
                 self.cancel.clear()
                 self.uploading = key
@@ -328,8 +339,7 @@ class Service:
             "light_preview": {i: "#%02x%02x%02x" % rgb for i, rgb in self.lights.preview.items()}
             if self.cfg["light_mode"] == "screen" else None,
             "capture": self.lights.capture.backend,
-            "fps": self.lights.game.current() if self.cfg["fps_enabled"] else None,
-            "fps_error": self.lights.game.error if self.cfg["fps_enabled"] else None,
+            "held": self.held,
             "logs": list(self.logs)[-60:],
         }
 

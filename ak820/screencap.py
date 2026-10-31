@@ -78,6 +78,7 @@ class Capture:
 
     INTERVAL = 0.04
     GDI_INTERVAL = 0.25
+    STALE = 2  # seconds without a frame before asking GDI, in case duplication has stopped working
 
     def __init__(self):
         self.cam = self.gdi = None
@@ -85,6 +86,7 @@ class Capture:
         self.backend = ""
         self.running = False
         self.thread = None
+        self.last_frame = 0.0
 
     def want(self, running):
         """The reader thread runs only while the effect needs it."""
@@ -111,18 +113,21 @@ class Capture:
                 time.sleep(self.GDI_INTERVAL)
                 continue
             try:
-                # a still screen delivers nothing, and on some drivers that includes the first frame
                 frame = self.cam.grab()
             except Exception:
-                time.sleep(1)
-                continue
+                frame = None
+            now = time.monotonic()
             if frame is not None:
                 step = max(1, frame.shape[1] // 160)
                 self.small = frame[::step, ::step, 2::-1]
-            elif self.small is None:
+                self.last_frame = now
+            elif now - self.last_frame >= self.STALE:
+                # a still screen delivers nothing, but so does a game that took the screen from
+                # desktop duplication: without this check the keys would stay on the last colors
                 gdi = ScreenSampler()
                 self.small = gdi.grab()
                 gdi.close()
+                self.last_frame = now
             time.sleep(self.INTERVAL)
         self.thread = None
 

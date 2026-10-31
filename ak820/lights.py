@@ -7,15 +7,12 @@ import time
 
 import numpy as np
 
-from .gamefps import GameFps
 from .hook import KeyPresses
-from .keyboard import KEYS, key_grid
+from .keyboard import key_grid
 from .screencap import Capture, zones
 
 BANDS = 16
 RATE_HINT = 48000
-FPS_KEYS = [KEYS[f"f{n}"] for n in range(1, 13)]
-FPS_KEYS_N = len(FPS_KEYS)
 
 # light mode -> (title, description) for the UI
 EFFECTS = {
@@ -95,7 +92,6 @@ class Lights(threading.Thread):
         self.audio_retry = 0.0
         self.sent, self.sent_at = None, 0.0
         self.capture = Capture()
-        self.game = GameFps()
         self.ambient = None  # smoothed screen colors, one row per key in self.order
         self.order = list(self.grid)
         self.preview = {}  # last frame, for the window's keyboard picture
@@ -104,40 +100,47 @@ class Lights(threading.Thread):
         self.flash_color, self.flash_until = rgb, time.monotonic() + seconds
 
     def run(self):
+        failed = None
         while True:
-            cfg = self.get_cfg()
-            mode = cfg["light_mode"]
-            self._audio(mode == "visualizer")
-            if mode == "reactive":
-                self.keys.start()
-            else:
-                self.keys.stop()
-            self.capture.want(mode == "screen")
-            self.game.want(cfg["fps_enabled"])
-            frame = self.frame(cfg, mode)
-            if cfg["fps_enabled"] and mode != "hardware":
-                frame = self.fps_bar(frame, cfg)
-            if frame:
-                self.preview = frame
-            kb = self.get_kb()
-            if frame is None or kb is None:
-                time.sleep(0.05)
-                continue
-            scale = cfg["light_brightness"] / 100
-            if scale < 1:
-                frame = {i: tuple(int(c * scale) for c in rgb) for i, rgb in frame.items()}
-            gentle = cfg.get("keyboard_load") == "gentle"
-            now = time.monotonic()
-            # gentle: ~10 frames/s instead of ~20, and an unchanged frame is only resent as a
-            # keep-alive, since the keyboard drops back to its own effect when frames stop
-            if gentle and (now - self.sent_at < 0.1 or (frame == self.sent and now - self.sent_at < 0.4)):
-                time.sleep(0.02)
-                continue
             try:
-                kb.live(frame)
-                self.sent, self.sent_at = frame, now
-            except OSError:
-                time.sleep(0.5)  # unplugged: the service reconnects
+                self.step()
+            except Exception as e:  # one bad frame must not stop the lighting for good
+                if repr(e) != failed:
+                    failed = repr(e)
+                    self.log(f"ошибка подсветки: {type(e).__name__}: {e}")
+                time.sleep(1)
+
+    def step(self):
+        cfg = self.get_cfg()
+        mode = cfg["light_mode"]
+        self._audio(mode == "visualizer")
+        if mode == "reactive":
+            self.keys.start()
+        else:
+            self.keys.stop()
+        self.capture.want(mode == "screen")
+        frame = self.frame(cfg, mode)
+        if frame:
+            self.preview = frame
+        kb = self.get_kb()
+        if frame is None or kb is None:
+            time.sleep(0.05)
+            return
+        scale = cfg["light_brightness"] / 100
+        if scale < 1:
+            frame = {i: tuple(int(c * scale) for c in rgb) for i, rgb in frame.items()}
+        gentle = cfg.get("keyboard_load") == "gentle"
+        now = time.monotonic()
+        # gentle: ~10 frames/s instead of ~20, and an unchanged frame is only resent as a
+        # keep-alive, since the keyboard drops back to its own effect when frames stop
+        if gentle and (now - self.sent_at < 0.1 or (frame == self.sent and now - self.sent_at < 0.4)):
+            time.sleep(0.02)
+            return
+        try:
+            kb.live(frame)
+            self.sent, self.sent_at = frame, now
+        except OSError:
+            time.sleep(0.5)  # unplugged: the service reconnects
 
     def _audio(self, wanted):
         if not wanted:
@@ -231,20 +234,6 @@ class Lights(threading.Thread):
         k = 0.15 + 0.1 * cfg["light_speed"]
         self.ambient = target if self.ambient is None else self.ambient + (target - self.ambient) * k
         return {i: tuple(int(v) for v in rgb) for i, rgb in zip(self.order, self.ambient)}
-
-    def fps_bar(self, frame, cfg):
-        """Real-time FPS meter on the F-keys: live frames cost the keyboard's flash nothing, unlike
-        its screen, which takes ~1.7 s and a flash write for every picture."""
-        game = self.game.current()
-        if game is None:
-            return frame
-        out = dict(frame) if frame else {i: (0, 0, 0) for i in self.grid}
-        lit = min(FPS_KEYS_N, round(game[1] / cfg["fps_scale"] * FPS_KEYS_N))
-        for n, i in enumerate(FPS_KEYS):
-            part = (n + 1) / FPS_KEYS_N
-            color = (255, 30, 30) if part <= 0.34 else (255, 170, 0) if part <= 0.67 else (0, 230, 80)
-            out[i] = color if n < lit else (0, 0, 0)
-        return out
 
     def reactive(self, cfg, now, base, ripple):
         presses = self.keys.recent(1.2)
