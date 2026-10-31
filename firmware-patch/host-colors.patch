@@ -1,8 +1,33 @@
+diff --git a/keyboards/a_jazz/ak820pro/ak820pro.c b/keyboards/a_jazz/ak820pro/ak820pro.c
+index d246df90..56cdb153 100644
+--- a/keyboards/a_jazz/ak820pro/ak820pro.c
++++ b/keyboards/a_jazz/ak820pro/ak820pro.c
+@@ -593,6 +593,7 @@ static void blit_stat_task(void) {
+ void housekeeping_task_kb(void) {
+     WDT_SCOPE(WDT_SITE_HOUSEKEEPING);
+     health_loop_tick();    // worst-gap max-hold; one timer read per pass
++    host_colors_housekeeping();   // back to the saved effect when the host goes quiet
+     menu_pass_begin();     // C10's pass timing, at the same boundary
+ #ifdef LOOPGAP_INSTRUMENT
+     loop_gap_task();
+diff --git a/keyboards/a_jazz/ak820pro/ak820pro.h b/keyboards/a_jazz/ak820pro/ak820pro.h
+index 9b180d49..c647709f 100644
+--- a/keyboards/a_jazz/ak820pro/ak820pro.h
++++ b/keyboards/a_jazz/ak820pro/ak820pro.h
+@@ -11,6 +11,8 @@
+  * (1<<1)|(1<<3) -- a silent-corruption coupling if layers were ever
+  * rearranged. The mac/win dip switch selects the base layer, so per-key
+  * remaps usually need doing on both bases. */
++void host_colors_housekeeping(void);   // hid_protocol.c
++
+ enum ak820pro_layers {
+     WINBASE = 0,
+     WINFN,
 diff --git a/keyboards/a_jazz/ak820pro/hid_protocol.c b/keyboards/a_jazz/ak820pro/hid_protocol.c
-index 9b2af0a1..260f8ef8 100644
+index 9b2af0a1..eb23955f 100644
 --- a/keyboards/a_jazz/ak820pro/hid_protocol.c
 +++ b/keyboards/a_jazz/ak820pro/hid_protocol.c
-@@ -400,6 +400,32 @@ static bool text_command_inner(uint8_t *data, uint8_t length) {
+@@ -400,6 +400,43 @@ static bool text_command_inner(uint8_t *data, uint8_t length) {
      }
  }
  
@@ -32,10 +57,21 @@ index 9b2af0a1..260f8ef8 100644
 +    host_colors_at = timer_read32();
 +}
 +
++/* No program, no cable, or a sleeping computer: the keyboard must not stay dark
++ * or frozen, so it returns to the effect saved in its memory. The host sends a
++ * frame BEFORE it selects the effect, or this would undo the selection at once.
++ * A saved HOST_COLORS is replaced: reloading it would only come back here. */
++void host_colors_housekeeping(void) {
++    if (rgb_matrix_get_mode() != RGB_MATRIX_CUSTOM_HOST_COLORS) return;
++    if (timer_elapsed32(host_colors_at) < 2000) return;
++    rgb_matrix_reload_from_eeprom();
++    if (rgb_matrix_get_mode() == RGB_MATRIX_CUSTOM_HOST_COLORS) rgb_matrix_mode_noeeprom(RGB_MATRIX_CYCLE_ALL);
++}
++
  // ---------------------------------------------------------------------------
  // Health channel: read the unified health counters over raw HID (health.c).
  // Same VIA custom-value framing as the channels above:
-@@ -1444,6 +1470,10 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
+@@ -1444,6 +1481,10 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
          text_command(data, length);
          return;
      }
@@ -46,7 +82,7 @@ index 9b2af0a1..260f8ef8 100644
      if (is_health_cmd(data, length)) {
          health_command(data, length);
          return;
-@@ -1465,6 +1495,8 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
+@@ -1465,6 +1506,8 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
          flash_command(data, length);
      } else if (is_text_cmd(data, length)) {
          text_command(data, length);
@@ -68,10 +104,10 @@ index bd644c60..9a74c6c9 100644
  };
  const uint8_t rgb_effects_n = sizeof rgb_effects / sizeof rgb_effects[0];
 diff --git a/keyboards/a_jazz/ak820pro/rgb_matrix_kb.inc b/keyboards/a_jazz/ak820pro/rgb_matrix_kb.inc
-index 013b1f40..b7c350b0 100644
+index 013b1f40..3671374c 100644
 --- a/keyboards/a_jazz/ak820pro/rgb_matrix_kb.inc
 +++ b/keyboards/a_jazz/ak820pro/rgb_matrix_kb.inc
-@@ -289,3 +289,33 @@ static bool DRIFT(effect_params_t* params) {
+@@ -289,3 +289,34 @@ static bool DRIFT(effect_params_t* params) {
  }
  
  #endif // RGB_MATRIX_CUSTOM_EFFECT_IMPLS
@@ -80,7 +116,8 @@ index 013b1f40..b7c350b0 100644
 + *
 + * The buffer is filled by the raw-HID channel 0x14 (hid_protocol.c); this only
 + * paints it, scaled by the board's brightness. If the host goes quiet for 2 s
-+ * the keys go dark, so a closed program cannot leave a frozen picture behind.
++ * host_colors_housekeeping() brings back the saved effect, so wireless use and a
++ * closed program behave like any other effect. Dark is only that brief moment.
 + */
 +RGB_MATRIX_EFFECT(HOST_COLORS)
 +

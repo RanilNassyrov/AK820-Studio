@@ -108,7 +108,7 @@ class Lights(threading.Thread):
         self.audio_retry = 0.0
         self.sent, self.sent_at = None, 0.0
         self.host_kb, self.host_ok, self.host_on = None, False, False
-        self.host_brightness, self.key_to_led = None, {}
+        self.host_brightness, self.key_to_led, self.host_checked = None, {}, 0.0
         self.stats = {"sent": 0, "worst_ms": 0}
         self.capture = Capture(log)
         self.ambient = None  # smoothed screen colors, one row per key in self.order
@@ -173,12 +173,17 @@ class Lights(threading.Thread):
         try:
             if drawn:
                 frame = self.frame(cfg, mode) or dict.fromkeys(self.order, (0, 0, 0))
-                if not self.host_on or cfg["light_brightness"] != self.host_brightness:
+                self.preview = frame
+                kb.host_frame([frame[i] for i in self.order])  # first: see host_colors_housekeeping()
+                now = time.monotonic()
+                # the firmware drops this mode after 2 s without frames (computer asleep, cable out)
+                if not self.host_on or cfg["light_brightness"] != self.host_brightness or (
+                        now - self.host_checked > 1 and kb.current_effect() != qmk.EFFECT_HOST):
                     self.host_brightness = cfg["light_brightness"]
                     kb.host_mode(round(self.host_brightness * 2.55))
                     self.host_on = True
-                self.preview = frame
-                kb.host_frame([frame[i] for i in self.order])
+                if now - self.host_checked > 1:
+                    self.host_checked = now
             elif self.host_on:
                 self.host_on = False
                 kb.effect(cfg["qmk_effect"], hex_rgb(cfg["qmk_color"]), round(cfg["qmk_brightness"] * 2.55),

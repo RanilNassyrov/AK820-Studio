@@ -60,21 +60,6 @@ Step "Проверяю, что всё работает"
 & $venvPy -c "import ak820.gui, ak820.service, ak820.render; ak820.render.quote_card(0, clock=True); print('ok')"
 if ($LASTEXITCODE -ne 0) { Fail "программа не запускается после установки" }
 
-Step "Скачиваю Intel PresentMon для счётчика FPS игр"
-$pm = Join-Path $root "tools\PresentMon.exe"
-$pmHash = "B2A706BC6AD475749E3B7E3409263AA1E6906D45BDCF993F6DBC0F660188F1AF"
-if (-not (Test-Path $pm) -or (Get-FileHash $pm -Algorithm SHA256).Hash -ne $pmHash) {
-    try {
-        New-Item -ItemType Directory -Force (Split-Path $pm) | Out-Null
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest "https://github.com/GameTechDev/PresentMon/releases/download/v2.6.0/PresentMon-2.6.0-x64.exe" -OutFile $pm -UseBasicParsing
-        if ((Get-FileHash $pm -Algorithm SHA256).Hash -ne $pmHash) { throw "контрольная сумма не совпала" }
-    } catch {
-        Remove-Item $pm -ErrorAction SilentlyContinue
-        Write-Host "Не удалось скачать PresentMon ($_). Всё работает, кроме счётчика FPS игр." -ForegroundColor Yellow
-    }
-}
-
 if (-not $env:AK820_NO_SHORTCUT) {
     Step "Создаю ярлык на рабочем столе"
     $desk = [Environment]::GetFolderPath("Desktop")

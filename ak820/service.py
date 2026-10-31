@@ -12,7 +12,6 @@ import time
 from pathlib import Path
 
 from . import qmk, render
-from .gamefps import GameFps
 from .keyboard import Keyboard, NotConnected, screen_blob
 from .screencap import fullscreen_state
 from .lights import Lights, hex_rgb
@@ -54,7 +53,6 @@ DEFAULTS = {
     "qmk_color": "#ff2060",
     "qmk_brightness": 100,  # percent
     "qmk_speed": 50,  # percent
-    "fps_enabled": True,  # game FPS on the screen; needs the QMK firmware
     "hw_mode": 8,
     "hw_color": "#ff2060",
     "hw_rainbow": True,
@@ -119,7 +117,6 @@ class Service:
         self.gif_progress, self.gif_message, self.gif_done_until = None, "", 0.0
         self.report_at = time.monotonic()
         self.lights = Lights(lambda: self.kb, lambda: self.cfg, self.log)
-        self.game = GameFps()
         self.text_shown, self.text_at = None, 0.0  # QMK: what the screen shows, and when it was sent
 
     # ------------------------------------------------------------ plumbing
@@ -205,13 +202,6 @@ class Service:
         """QMK firmware: nothing goes through flash, so the screen simply follows what is happening.
         The firmware drops the text after ~3 minutes of silence, hence the keepalive."""
         now = time.monotonic()
-        self.game.want(self.cfg["fps_enabled"])
-        fullscreen = in_fullscreen()
-        game = self.game.current(fullscreen) if self.cfg["fps_enabled"] else None
-        if fullscreen and now - self.report_at >= self.REPORT_EVERY:
-            self.report_at = now
-            self.log(f"игра (состояние {fullscreen_state()}): окно {self.game.foreground()}, "
-                     f"FPS {game}, кадры {self.game.top()}, PresentMon: {self.game.error or 'ok'}")
         if self.gif_progress:
             done, total = self.gif_progress
             wanted = (f"Zagruzka GIF {100 * done // total}%", "Ne nazhimayte Fn+G", qmk.ICON_NONE)
@@ -222,9 +212,6 @@ class Service:
             n = self.notice
             wanted = (n.app, " ".join(n.lines), qmk.ICON_NONE)
             title = f"Уведомление: {n.app}"
-        elif game:
-            wanted = (f"FPS {game[1]}", game[0].removesuffix(".exe"), qmk.ICON_NONE)
-            title = f"FPS игры: {game[1]}"
         elif self.music_visible():
             t = self.track
             icon = qmk.ICON_PLAY if t.playing else qmk.ICON_PAUSE
@@ -384,7 +371,6 @@ class Service:
                     self.log(f"ошибка экрана: {type(e).__name__}: {e}")
                 await asyncio.sleep(0.5)
                 continue
-            self.game.want(False)
             key, title, make = self.desired()
             if key != self.want:
                 self.want, self.want_since = key, time.monotonic()
@@ -463,8 +449,6 @@ class Service:
             "zones": self.lights.host_ok,
             "gif_message": self.gif_message,
             "firmware": ("qmk" if getattr(self.kb, "qmk", False) else "stock") if self.kb else None,
-            "fps": self.game.current(in_fullscreen()) if self.cfg["fps_enabled"] else None,
-            "fps_error": self.game.error if self.cfg["fps_enabled"] else None,
             "exclusive": self.lights.capture.exclusive,
             "logs": list(self.logs)[-60:],
         }
@@ -484,7 +468,9 @@ class Service:
         # a save writes the keyboard's settings memory, so it waits for the sliders to stop moving
         if self.save_timer:
             self.save_timer.cancel()
-        self.save_timer = threading.Timer(3, lambda: self.background(kb.save_lighting))
+        # only the keyboard's own effect may be saved: it is what wireless use comes back to
+        self.save_timer = threading.Timer(3, lambda: self.cfg["light_mode"] == "hardware"
+                                          and self.background(kb.save_lighting))
         self.save_timer.daemon = True
         self.save_timer.start()
 
