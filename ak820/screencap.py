@@ -36,6 +36,15 @@ gdi32.DeleteObject.argtypes = (wintypes.HGDIOBJ,)
 gdi32.DeleteDC.argtypes = (wintypes.HDC,)
 
 
+def boost_thread():
+    """A game keeps every core busy: at normal priority a lighting frame took 186-395 ms instead of
+    60. These threads sleep nearly all the time, so raising them costs the game almost nothing."""
+    k = ctypes.windll.kernel32
+    k.GetCurrentThread.restype = ctypes.c_void_p
+    k.SetThreadPriority.argtypes = (ctypes.c_void_p, ctypes.c_int)
+    k.SetThreadPriority(k.GetCurrentThread(), 2)  # THREAD_PRIORITY_HIGHEST
+
+
 class BITMAPINFOHEADER(ctypes.Structure):
     _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG), ("biHeight", wintypes.LONG),
                 ("biPlanes", wintypes.WORD), ("biBitCount", wintypes.WORD), ("biCompression", wintypes.DWORD),
@@ -87,6 +96,7 @@ class Capture:
         self.running = False
         self.thread = None
         self.last_frame = 0.0
+        self.stats = {"frames": 0, "errors": 0, "gdi": 0}
 
     def want(self, running):
         """The reader thread runs only while the effect needs it."""
@@ -105,6 +115,7 @@ class Capture:
             self.backend = "GDI"
 
     def _run(self):
+        boost_thread()
         if not self.cam and not self.gdi:
             self._open()
         while self.running:
@@ -116,11 +127,13 @@ class Capture:
                 frame = self.cam.grab()
             except Exception:
                 frame = None
+                self.stats["errors"] += 1
             now = time.monotonic()
             if frame is not None:
                 step = max(1, frame.shape[1] // 160)
                 self.small = frame[::step, ::step, 2::-1]
                 self.last_frame = now
+                self.stats["frames"] += 1
             elif now - self.last_frame >= self.STALE:
                 # a still screen delivers nothing, but so does a game that took the screen from
                 # desktop duplication: without this check the keys would stay on the last colors
@@ -128,6 +141,7 @@ class Capture:
                 self.small = gdi.grab()
                 gdi.close()
                 self.last_frame = now
+                self.stats["gdi"] += 1
             time.sleep(self.INTERVAL)
         self.thread = None
 

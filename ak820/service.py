@@ -63,12 +63,17 @@ MUSIC_APPS = ("music", "spotify", "aimp", "foobar", "vlc", "winamp", "deezer", "
 UPLOADING = threading.Lock()
 
 
-def in_fullscreen():
-    """True while a fullscreen app (game, fullscreen video) covers the screen."""
+def fullscreen_state():
+    """Windows' state for the foreground app; 2, 3, 4 and 7 mean something fullscreen covers the
+    screen (busy, Direct3D exclusive, presentation, fullscreen app)."""
     state = ctypes.c_int()
     if ctypes.windll.shell32.SHQueryUserNotificationState(ctypes.byref(state)):
-        return False
-    return state.value in (2, 3, 4, 7)  # busy, Direct3D fullscreen, presentation, fullscreen app
+        return 0
+    return state.value
+
+
+def in_fullscreen():
+    return fullscreen_state() in (2, 3, 4, 7)
 
 
 def load_config():
@@ -89,6 +94,8 @@ def load_config():
 
 
 class Service:
+    REPORT_EVERY = 15
+
     def __init__(self):
         self.cfg = load_config()
         self.kb = None
@@ -109,6 +116,7 @@ class Service:
         self.cancel = threading.Event()
         self.retry_at = 0.0
         self.held = False  # a fullscreen game is open, so screen uploads wait
+        self.report_at = time.monotonic()
         self.lights = Lights(lambda: self.kb, lambda: self.cfg, self.log)
 
     # ------------------------------------------------------------ plumbing
@@ -291,6 +299,7 @@ class Service:
             urgent = key[0] == "notice"
             essential = key[0] in ("notice", "track")
             settled = urgent or time.monotonic() - self.want_since >= self.limits()["settle"]
+            self.report_fullscreen()
             # the keyboard can't take live lighting during an upload, so games get neither
             self.held = self.cfg["hold_screen_in_games"] and in_fullscreen() and not self.force
             if self.upload and self.upload.done():
@@ -306,6 +315,24 @@ class Service:
                 self.uploading = key
                 self.upload = loop.run_in_executor(None, self.show, key, title, make)
             await asyncio.sleep(0.5 if self.upload else 1)
+
+    def report_fullscreen(self):
+        """One line every 15 s during a game, to see from the log what the lighting really does."""
+        now = time.monotonic()
+        elapsed = now - self.report_at
+        if elapsed < self.REPORT_EVERY:
+            return
+        cap, light = self.lights.capture.stats, self.lights.stats
+        state = fullscreen_state()
+        if in_fullscreen():
+            small = self.lights.capture.small
+            level = round(float(small.mean())) if small is not None else None
+            self.log(f"игра (состояние {state}): подсветка {light['sent'] / elapsed:.1f} кадр/с, худший "
+                     f"{light['worst_ms']} мс; захват {cap['frames'] / elapsed:.1f} кадр/с, ошибок "
+                     f"{cap['errors']}, GDI {cap['gdi']}, яркость картинки {level}")
+        cap.update(frames=0, errors=0, gdi=0)
+        light.update(sent=0, worst_ms=0)
+        self.report_at = now
 
     def wants_app(self, app):
         apps = self.cfg["notify_apps"]

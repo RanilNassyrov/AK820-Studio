@@ -9,7 +9,7 @@ import numpy as np
 
 from .hook import KeyPresses
 from .keyboard import key_grid
-from .screencap import Capture, zones
+from .screencap import Capture, boost_thread, zones
 
 BANDS = 16
 RATE_HINT = 48000
@@ -91,6 +91,7 @@ class Lights(threading.Thread):
         self.keys = KeyPresses()
         self.audio_retry = 0.0
         self.sent, self.sent_at = None, 0.0
+        self.stats = {"sent": 0, "worst_ms": 0}
         self.capture = Capture()
         self.ambient = None  # smoothed screen colors, one row per key in self.order
         self.order = list(self.grid)
@@ -100,6 +101,7 @@ class Lights(threading.Thread):
         self.flash_color, self.flash_until = rgb, time.monotonic() + seconds
 
     def run(self):
+        boost_thread()
         failed = None
         while True:
             try:
@@ -139,6 +141,9 @@ class Lights(threading.Thread):
         try:
             kb.live(frame)
             self.sent, self.sent_at = frame, now
+            took = (time.monotonic() - now) * 1000
+            self.stats["sent"] += 1
+            self.stats["worst_ms"] = max(self.stats["worst_ms"], round(took))
         except OSError:
             time.sleep(0.5)  # unplugged: the service reconnects
 
