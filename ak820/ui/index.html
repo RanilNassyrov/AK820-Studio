@@ -160,12 +160,12 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
     <div class="card">
       <h2>Экран клавиатуры</h2>
       <div class="screen-wrap">
-        <div class="bezel"><div class="empty" id="noPreview">Экран появится<br>после первого обновления</div><img id="preview" hidden>
+        <div class="bezel stockOnly"><div class="empty" id="noPreview">Экран появится<br>после первого обновления</div><img id="preview" hidden>
           <div class="loading" id="loading"><div>Загрузка на клавиатуру</div><div class="bar"><i id="barFill"></i></div><div id="barText">0%</div></div></div>
         <div style="flex:1;min-width:0">
           <div class="hint">Сейчас показано</div>
           <div id="screenTitle" style="font-weight:600;font-size:15px;margin:2px 0 18px;overflow:hidden;text-overflow:ellipsis">—</div>
-          <div class="row"><button class="btn small" onclick="api('refresh_screen');toast('Экран обновится через пару секунд')">Обновить экран</button>
+          <div class="row"><button class="btn small stockOnly" onclick="api('refresh_screen');toast('Экран обновится через пару секунд')">Обновить экран</button>
           <button class="btn small" onclick="api('sync_time');toast('Часы синхронизированы')">Синхр. часы</button></div>
         </div>
       </div>
@@ -187,14 +187,14 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
 <!-- SCREEN -->
 <section class="page" id="screen">
   <h1>Экран</h1><p class="sub">Что показывать на экранчике 128×128.</p>
-  <div class="note qmkOnly" style="margin:0 0 18px">На прошивке QMK экран обновляется мгновенно и без «Loading»: две строки латиницей, кириллица передаётся транслитом. Цитаты, анимации и GIF пока работают только на заводской прошивке.</div>
+  <div class="note qmkOnly" style="margin:0 0 18px">Экран показывает две строки латиницей, кириллица передаётся транслитом. Когда нечего показывать, на нём часы.</div>
   <div class="card qmkOnly"><h2>Своя GIF на экране</h2>
     <p class="hint" style="margin-top:-6px">GIF записывается в память клавиатуры и играет сама, даже без программы. Включить и выключить: Fn+G. Скорость прошивки постоянная, 10 кадров в секунду.</p>
     <div class="setting"><div class="t"><b>Кадров не больше</b><span>Примерно 15 секунд загрузки на кадр: 24 кадра занимают 6 минут. Подсветка и текст в это время работают</span></div>
       <div class="range"><input type="range" min="4" max="60" step="2" data-cfg="gif_max_frames"><output data-out="gif_max_frames"></output></div></div>
     <div class="row" style="margin-top:12px"><button class="btn primary" id="gifBtn" onclick="api('upload_gif')">Выбрать и загрузить GIF…</button></div>
     <div id="gifBox" hidden style="margin-top:14px"><div class="bar" style="width:100%"><i id="gifFill"></i></div><div class="hint" id="gifText" style="margin-top:8px"></div></div></div>
-  <div class="card">
+  <div class="card stockOnly">
     <h2>Когда ничего не играет</h2>
     <div class="tiles" id="idleTiles"></div>
     <div id="customRow" class="row" style="margin-top:14px"><button class="btn small" onclick="chooseImage()">Выбрать картинку или GIF…</button><span class="hint" id="customPath"></span></div>
@@ -214,7 +214,7 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
     <div class="setting"><div class="t"><b>Музыка на паузе</b><span>Через сколько вернуть экран ожидания</span></div>
       <select data-cfg="pause_to_idle_seconds" data-num><option value="0">Не возвращать</option><option value="5">5 секунд</option><option value="10">10 секунд</option><option value="15">15 секунд</option><option value="30">30 секунд</option><option value="60">1 минута</option><option value="120">2 минуты</option><option value="300">5 минут</option><option value="900">15 минут</option></select></div>
   </div>
-  <div class="card">
+  <div class="card stockOnly">
     <h2>Скорость обновления</h2>
     <div class="setting"><div class="t"><b>Анимированные экраны</b><span>Музыка и уведомления с анимацией. Каждый кадр добавляет ~1 с к «Loading»</span></div><label class="switch"><input type="checkbox" data-cfg="animated_screens"><i></i></label></div>
     <div class="setting"><div class="t"><b>Не обновлять экран в играх</b><span>Пока открыта полноэкранная игра или видео, экран ждёт: во время загрузки клавиатура не может менять подсветку, и она замирает</span></div><label class="switch"><input type="checkbox" data-cfg="hold_screen_in_games"><i></i></label></div>
@@ -297,14 +297,14 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
 
 <!-- SETTINGS -->
 <section class="page" id="settings">
-  <h1>Настройки</h1><p class="sub">Запуск и ограничения.</p>
+  <h1>Настройки</h1><p class="sub">Запуск программы.</p>
   <div class="card">
     <div class="setting"><div class="t"><b>Запускать вместе с Windows</b><span>Программа стартует свёрнутой в трей</span></div><label class="switch"><input type="checkbox" id="autostart"><i></i></label></div>
     <div class="setting"><div class="t"><b>Синхронизировать часы при подключении</b></div><label class="switch"><input type="checkbox" data-cfg="sync_time_on_start"><i></i></label></div>
-    <div class="setting"><div class="t"><b>Не больше обновлений экрана в час</b><span>Бережёт флеш-память клавиатуры</span></div>
+    <div class="setting stockOnly"><div class="t"><b>Не больше обновлений экрана в час</b><span>Бережёт флеш-память клавиатуры</span></div>
       <div class="range"><input type="range" min="10" max="60" step="5" data-cfg="max_uploads_per_hour"><output data-out="max_uploads_per_hour"></output></div></div>
   </div>
-  <div class="card">
+  <div class="card stockOnly">
     <h2>Нагрузка на клавиатуру</h2>
     <div class="setting"><div class="t"><b>Режим работы</b><span>Щадящий режим реже пишет в память клавиатуры и меньше нагружает её по USB</span></div>
       <div class="seg" data-seg="keyboard_load"><button data-v="normal">Обычный</button><button data-v="gentle">Щадящий</button></div></div>
@@ -318,7 +318,7 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
     </ul>
     <div class="note">Память и процессор самой клавиатуры нельзя расширить за счёт компьютера: это закрытая прошивка, она хранит картинку только у себя. В обоих режимах программа не загружает картинку, которая уже есть на клавиатуре, например после перезапуска.</div>
   </div>
-  <div class="card"><h2>О программе</h2><p class="hint" style="margin:0">AK820 Studio. Работает только при подключении клавиатуры USB-кабелем. Закрытие окна сворачивает программу в трей; полностью выйти можно через значок у часов → «Выход».<br>Протокол клавиатуры: проект hcristosm/ak820-linux (MIT).</p></div>
+  <div class="card"><h2>О программе</h2><p class="hint" style="margin:0">AK820 Studio. Музыка, уведомления, цвета экрана и загрузка GIF работают по USB-кабелю. Без кабеля клавиатура сама включает эффект, сохранённый в ней. Закрытие окна сворачивает программу в трей; полностью выйти можно через значок у часов → «Выход».<br>Протокол клавиатуры: проект hcristosm/ak820-linux (MIT).</p></div>
 </section>
 </main>
 <div class="toast" id="toast"></div>
