@@ -43,6 +43,7 @@ DEFAULTS = {
     "light_brightness": 100,
     "visualizer_style": "rainbow",
     "screen_light_style": "zones",  # "zones": each key copies its part of the monitor; "single"
+    "screen_boost": 60,  # percent: 0 keeps the screen's own dull averages, 100 is full power
     "screen_fallback": "wave",  # light mode while a game in exclusive fullscreen hides the screen
     "screen_dark_off": True,
     "screen_dark_level": 12,  # percent of full brightness below which a key stays off

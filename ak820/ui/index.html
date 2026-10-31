@@ -229,6 +229,8 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
       <div class="seg" data-seg="visualizer_style"><button data-v="rainbow">Радуга</button><button data-v="fire">Огонь</button></div></div>
     <div class="setting" id="screenRow"><div class="t"><b>Как брать цвета с экрана</b><span>По зонам: каждая клавиша повторяет свою часть монитора. Один цвет: вся клавиатура — главный цвет картинки</span></div>
       <div class="seg" data-seg="screen_light_style"><button data-v="zones">По зонам</button><button data-v="single">Один цвет</button></div></div>
+    <div class="setting" id="boostRow"><div class="t"><b>Сила цветов</b><span>Усредняя участок экрана, программа получает тусклый цвет. Чем выше значение, тем ярче и насыщеннее клавиши, как у встроенных эффектов</span></div>
+      <div class="range"><input type="range" min="0" max="100" step="5" data-cfg="screen_boost"><output data-out="screen_boost" data-unit="%"></output></div></div>
     <div class="setting" id="fallbackRow"><div class="t"><b>Запасной эффект для игр</b><span>Игра в эксклюзивном полноэкранном режиме скрывает картинку от программы. Чтобы работали цвета игры, выберите в её настройках режим «Без рамки» (Borderless)</span></div>
       <div class="seg" data-seg="screen_fallback"><button data-v="wave">Волна</button><button data-v="aurora">Сияние</button><button data-v="visualizer">Эквалайзер</button><button data-v="reactive">Нажатия</button></div></div>
     <div class="setting" id="darkRow"><div class="t"><b>Не светить на тёмных цветах</b><span>Клавиши под тёмными участками экрана гаснут</span></div>
@@ -426,6 +428,7 @@ function sync() {
   $("#screenRow").style.display = m === "screen" ? "" : "none";
   $("#darkRow").style.display = m === "screen" ? "" : "none";
   $("#fallbackRow").style.display = m === "screen" ? "" : "none";
+  $("#boostRow").style.display = m === "screen" ? "" : "none";
   $("#darkLevelRow").style.display = m === "screen" && cfg.screen_dark_off ? "" : "none";
   $("#gifRow").style.display = cfg.idle_style === "custom" ? "" : "none";
   $("#gifHint").textContent = `Длинная GIF прореживается и сохраняет скорость. Загрузка: около ${Math.round(cfg.gif_max_frames * 1.1)} с, всё это время подсветка стоит`;

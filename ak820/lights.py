@@ -230,13 +230,17 @@ class Lights(threading.Thread):
             r = np.rint(pos[:, 1] * (rows - 1)).astype(int)
             target = cells[r, c]
         level = target.max(1)  # measured before the color boost, which would brighten dark areas
-        # LEDs wash colors out, so push them away from gray
+        # averaged zones come out dull and dark next to the full-power built-in effects, so push
+        # them away from gray and lift their brightness along a curve that keeps black black
+        boost = cfg["screen_boost"] / 100
         gray = target.mean(1, keepdims=True)
-        target = np.clip(gray + (target - gray) * 1.6, 0, 255)
+        target = np.clip(gray + (target - gray) * (1.3 + 1.2 * boost), 0, 255)
         if cfg["screen_dark_off"]:
             # keys go dark under the threshold, with a short ramp so edges don't blink
             limit = cfg["screen_dark_level"] / 100 * 255
             target = target * np.clip((level - limit) / (limit * 0.5 + 1), 0, 1)[:, None]
+        peak = np.maximum(target.max(1, keepdims=True), 1)
+        target = target * (255 * (peak / 255) ** (1 - 0.75 * boost)) / peak
         # react faster at higher speed; smoothing hides flicker from video and scrolling
         k = 0.15 + 0.1 * cfg["light_speed"]
         self.ambient = target if self.ambient is None else self.ambient + (target - self.ambient) * k
