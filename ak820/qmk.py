@@ -29,6 +29,19 @@ FRAME_MS = 100  # the firmware's fixed playback speed, whatever the file says
 MATRIX = 6, 15
 KC_G, KC_TRANSPARENT, ANIM_TOG = 0x000A, 0x0001, 0x7E11  # QK_KB_0 + 17 in via.json
 FN_LAYERS = 1, 3  # Windows and Mac sides
+HOST_COLORS_CHANNEL, EFFECT_HOST, HOST_PER_PACKET = 0x14, 10, 9  # our firmware patch
+# each LED's place on the board, QMK's 0-224 by 0-64 grid (keyboard.json)
+LEDS = [
+    (7, 5), (24, 5), (38, 5), (52, 5), (66, 5), (84, 5), (98, 5), (112, 5), (126, 5), (144, 5),
+    (158, 5), (172, 5), (186, 5), (203, 5), (7, 19), (21, 19), (35, 19), (49, 19), (63, 19),
+    (77, 19), (91, 19), (105, 19), (119, 19), (133, 19), (147, 19), (161, 19), (175, 19), (196, 19),
+    (224, 19), (10, 29), (28, 29), (42, 29), (56, 29), (70, 29), (84, 29), (98, 29), (112, 29),
+    (126, 29), (140, 29), (154, 29), (168, 29), (182, 29), (200, 29), (224, 29), (12, 40), (32, 40),
+    (46, 40), (60, 40), (74, 40), (88, 40), (102, 40), (116, 40), (130, 40), (144, 40), (158, 40),
+    (172, 40), (194, 40), (224, 40), (16, 51), (38, 51), (52, 51), (66, 51), (80, 51), (94, 51),
+    (108, 51), (122, 51), (136, 51), (150, 51), (164, 51), (184, 51), (206, 53), (9, 61), (26, 61),
+    (44, 61), (96, 61), (147, 61), (161, 61), (175, 61), (189, 64), (203, 64), (217, 64),
+]
 EFFECT_SOLID = 1
 # QMK numbers the effects enabled in the firmware (keyboard.json), then its custom ones
 EFFECTS = [(1, "Один цвет", True), (2, "Буквы и модификаторы", True), (3, "Перелив всех клавиш", False),
@@ -182,6 +195,25 @@ class QmkKeyboard:
 
     def current_effect(self):
         return self.request(VIA_GET_VALUE, VIA_RGB_CHANNEL, VIA_EFFECT)[3]
+
+    def has_host_colors(self):
+        """Only our firmware build knows channel 0x14; a stock QMK one refuses the report."""
+        try:
+            self.request(SET_VALUE, HOST_COLORS_CHANNEL, 0, 1, 0, 0, 0)
+            return True
+        except OSError:
+            return False
+
+    def host_mode(self, brightness):
+        self.send(SET_VALUE, VIA_RGB_CHANNEL, VIA_EFFECT, EFFECT_HOST)
+        self.send(SET_VALUE, VIA_RGB_CHANNEL, VIA_BRIGHTNESS, brightness)
+        self.color = None
+
+    def host_frame(self, colors):
+        """One color per LED, in LEDS order. Not saved anywhere, so it can run nonstop."""
+        for first in range(0, len(colors), HOST_PER_PACKET):
+            part = colors[first:first + HOST_PER_PACKET]
+            self.send(SET_VALUE, HOST_COLORS_CHANNEL, first, len(part), *(c for rgb in part for c in rgb))
 
     def solid(self, rgb):
         """The whole keyboard in one color, through VIA's lighting channel (not saved)."""

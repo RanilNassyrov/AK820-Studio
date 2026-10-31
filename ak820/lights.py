@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 
+from . import qmk
 from .hook import KeyPresses
 from .keyboard import key_grid
 from .screencap import Capture, boost_thread, zones
@@ -91,6 +92,7 @@ class Lights(threading.Thread):
         self.keys = KeyPresses()
         self.audio_retry = 0.0
         self.sent, self.sent_at = None, 0.0
+        self.host_kb, self.host_ok, self.host_on = None, False, False
         self.stats = {"sent": 0, "worst_ms": 0}
         self.capture = Capture(log)
         self.ambient = None  # smoothed screen colors, one row per key in self.order
@@ -119,6 +121,14 @@ class Lights(threading.Thread):
         self._audio(False)
         screen = cfg["light_mode"] == "screen"
         self.capture.want(screen)
+        if kb is not self.host_kb:
+            self.host_kb, self.host_ok, self.host_on = kb, kb.has_host_colors(), False
+            self.log("прошивка: цвета по зонам " + ("доступны" if self.host_ok else "недоступны, один цвет"))
+            if self.host_ok:  # the firmware's LED order and real positions replace the stock grid
+                self.grid = {i: (x / 224, y / 64) for i, (x, y) in enumerate(qmk.LEDS)}
+                self.order, self.ambient = list(self.grid), None
+        if self.host_ok:
+            return self.host_step(cfg, kb, screen)
         if screen and not self.capture.exclusive:
             frame = self.screen_colors(dict(cfg, screen_light_style="single"))
             if frame:
@@ -131,6 +141,28 @@ class Lights(threading.Thread):
         elif not screen:
             kb.color = None  # picks the solid effect again next time
         time.sleep(0.066)
+
+    def host_step(self, cfg, kb, screen):
+        """Our firmware takes every key's color, so the keys show the screen zone by zone. A game in
+        exclusive fullscreen hides the picture: the firmware's own effect runs until it's back."""
+        visible = screen and not self.capture.exclusive
+        try:
+            if visible:
+                frame = self.screen_colors(cfg)
+                if frame:
+                    if not self.host_on:
+                        kb.host_mode(round(cfg["light_brightness"] * 2.55))
+                        self.host_on = True
+                    self.preview = frame
+                    kb.host_frame([frame[i] for i in self.order])
+            elif self.host_on:
+                self.host_on = False
+                if screen:
+                    kb.effect(cfg["qmk_effect"], hex_rgb(cfg["qmk_color"]), round(cfg["qmk_brightness"] * 2.55),
+                              round(cfg["qmk_speed"] * 2.55))
+        except (OSError, ValueError):
+            pass  # unplugged: the service reconnects
+        time.sleep(0.01 if visible else 0.066)
 
     def step(self):
         cfg = self.get_cfg()
