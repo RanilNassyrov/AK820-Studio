@@ -44,9 +44,11 @@ LEDS = [
 ]
 EFFECT_SOLID = 1
 # QMK numbers the effects enabled in the firmware (keyboard.json), then its custom ones
+# the flag says whether the effect uses the chosen color: rain and drops pick random ones
 EFFECTS = [(1, "Один цвет", True), (2, "Буквы и модификаторы", True), (3, "Перелив всех клавиш", False),
-           (4, "Радуга слева направо", False), (5, "Радуга сверху вниз", False), (6, "Капли", True),
-           (7, "Тепловая карта нажатий", False), (8, "Дождь", True), (9, "Дрейф", True)]
+           (4, "Радуга слева направо", False), (5, "Радуга сверху вниз", False), (6, "Капли", False),
+           (7, "Тепловая карта нажатий", False), (8, "Дождь", False), (9, "Дрейф", True)]
+MODIFIER_LEDS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 27, 28, 29, 43, 44, 56, 57, 58, 69, 70, 71, 72, 73, 75, 76, 77, 78, 79, 80)  # keyboard.json flags: "Буквы и модификаторы" colors these apart
 ICON_NONE, ICON_PLAY, ICON_PAUSE, ICON_STOP = 0, 1, 2, 3
 LINE_MAX = (19, 21)  # line 0 shares its row with the play icon
 

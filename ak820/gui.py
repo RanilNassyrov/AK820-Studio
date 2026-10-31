@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 from . import render
 from .keyboard import KEYS, MODES, ROW_ENDS
 from .lights import EFFECTS, key_to_led
-from .qmk import EFFECTS as QMK_EFFECTS
+from .qmk import EFFECTS as QMK_EFFECTS, MODIFIER_LEDS
 from .service import ROOT, UPLOADING, Service
 
 UI = Path(__file__).resolve().parent / "ui" / "index.html"
@@ -65,6 +65,7 @@ class Api:
             "effects": [{"id": k, "title": t, "desc": d} for k, (t, d) in EFFECTS.items()],
             "qmk_effects": [{"id": i, "title": t, "color": c} for i, t, c in QMK_EFFECTS],
             "key_to_led": key_to_led(),
+            "modifier_leds": MODIFIER_LEDS,
             "hw_modes": [{"id": i, "name": HW_NAMES[n], "flags": f} for i, (n, f) in MODES.items()],
             "idle": [{"id": k, "title": t} for k, t in render.IDLE.items()],
             "layout": layout(),
