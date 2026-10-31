@@ -230,7 +230,7 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
 <!-- LIGHT -->
 <section class="page" id="light">
   <h1>Подсветка</h1><p class="sub">Эффекты программы работают, пока она запущена. Встроенные эффекты сохраняются в самой клавиатуре.</p>
-  <div class="note qmkOnly" style="margin:0 0 18px">На прошивке QMK доступны её эффекты и «Цвета экрана» одним цветом на всю клавиатуру. Цвета по зонам требуют доработки прошивки.</div>
+  <div class="note qmkOnly" style="margin:0 0 18px"><span id="qmkLightNote"></span></div>
   <div class="kbd-wrap"><div class="kbd" id="kbd"></div></div>
   <div class="card qmkOnly" style="margin-top:18px"><h2>Эффекты клавиатуры</h2>
     <div class="tiles" id="qmkFx"></div>
@@ -376,7 +376,7 @@ function buildFx() {
   $$("[data-fx]").forEach(t => t.onclick = () => t.dataset.fx === "hardware" ? (api("apply_hardware"), toast("Включён встроенный эффект клавиатуры"), cfg.light_mode = "hardware", sync()) : set("light_mode", t.dataset.fx));
 }
 function buildQmk() {
-  $("#qmkFx").innerHTML = D.qmk_effects.map(e => `<div class="tile" data-qfx="${e.id}"><b>${e.title}</b></div>`).join("") + `<div class="tile" data-qscreen="1"><b>Цвета экрана</b><span>Один цвет на всю клавиатуру</span></div>`;
+  $("#qmkFx").innerHTML = D.qmk_effects.map(e => `<div class="tile" data-qfx="${e.id}"><b>${e.title}</b></div>`).join("") + `<div class="tile" data-qscreen="1"><b>Цвета экрана</b><span id="qmkScreenHint"></span></div>`;
   $$("[data-qfx]").forEach(t => t.onclick = async () => { cfg.qmk_effect = +t.dataset.qfx; cfg.light_mode = "hardware"; sync(); api("apply_hardware"); cfg = await api("update", {qmk_effect: cfg.qmk_effect, light_mode: "hardware"}); sync(); });
   $("[data-qscreen]").onclick = () => set("light_mode", "screen");
 }
@@ -469,6 +469,8 @@ async function poll() {
     const s = await api("status");
     screenPreview = s.light_preview;
     const isQmk = s.firmware === "qmk";
+    $("#qmkLightNote").textContent = s.zones ? "Наша прошивка: эффекты клавиатуры и цвета экрана по зонам, каждая клавиша повторяет свою часть монитора. В игре нужен режим «Без рамки» (Borderless)." : "На этой прошивке «Цвета экрана» работают одним цветом на всю клавиатуру.";
+    $("#qmkScreenHint").textContent = s.zones ? "Каждая клавиша повторяет свою часть экрана" : "Один цвет на всю клавиатуру";
     const gp = s.gif_progress;
     $("#gifBox").hidden = !gp && !s.gif_message;
     $("#gifBtn").disabled = !!gp;

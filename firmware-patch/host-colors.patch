@@ -1,0 +1,107 @@
+diff --git a/keyboards/a_jazz/ak820pro/hid_protocol.c b/keyboards/a_jazz/ak820pro/hid_protocol.c
+index 9b2af0a1..260f8ef8 100644
+--- a/keyboards/a_jazz/ak820pro/hid_protocol.c
++++ b/keyboards/a_jazz/ak820pro/hid_protocol.c
+@@ -400,6 +400,32 @@ static bool text_command_inner(uint8_t *data, uint8_t length) {
+     }
+ }
+ 
++// ---------------------------------------------------------------------------
++// Host colors channel: every key's color, sent by the computer for the
++// HOST_COLORS effect (rgb_matrix_kb.inc). No flash is touched.
++//   [SET_VALUE, HOST_COLORS_CHANNEL, first LED, count, r, g, b, r, g, b, ...]
++// A 32-byte report carries 9 LEDs. A bad range is refused, not clamped.
++enum { HOST_COLORS_CHANNEL = 0x14, HOST_COLORS_PER_PACKET = 9 };
++
++uint8_t  host_colors[RGB_MATRIX_LED_COUNT][3];
++uint32_t host_colors_at;
++
++static inline bool is_host_colors_cmd(const uint8_t *data, uint8_t length) {
++    return length >= 4 && data[0] == RTC_SET_VALUE && data[1] == HOST_COLORS_CHANNEL;
++}
++
++static void host_colors_command(uint8_t *data, uint8_t length) {
++    uint8_t first = data[2], count = data[3];
++    if (count == 0 || count > HOST_COLORS_PER_PACKET ||
++        (uint16_t)first + count > RGB_MATRIX_LED_COUNT ||
++        length < (uint16_t)4 + (uint16_t)count * 3) {
++        data[0] = RTC_UNHANDLED;
++        return;
++    }
++    memcpy(host_colors[first], &data[4], (uint16_t)count * 3);
++    host_colors_at = timer_read32();
++}
++
+ // ---------------------------------------------------------------------------
+ // Health channel: read the unified health counters over raw HID (health.c).
+ // Same VIA custom-value framing as the channels above:
+@@ -1444,6 +1470,10 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
+         text_command(data, length);
+         return;
+     }
++    if (is_host_colors_cmd(data, length)) {
++        host_colors_command(data, length);
++        return;
++    }
+     if (is_health_cmd(data, length)) {
+         health_command(data, length);
+         return;
+@@ -1465,6 +1495,8 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
+         flash_command(data, length);
+     } else if (is_text_cmd(data, length)) {
+         text_command(data, length);
++    } else if (is_host_colors_cmd(data, length)) {
++        host_colors_command(data, length);
+     } else if (is_health_cmd(data, length)) {
+         health_command(data, length);
+     } else {
+diff --git a/keyboards/a_jazz/ak820pro/rgb_effects.c b/keyboards/a_jazz/ak820pro/rgb_effects.c
+index bd644c60..9a74c6c9 100644
+--- a/keyboards/a_jazz/ak820pro/rgb_effects.c
++++ b/keyboards/a_jazz/ak820pro/rgb_effects.c
+@@ -53,6 +53,7 @@ const rgb_effect_t rgb_effects[] = {
+ #if defined(RGB_MATRIX_CUSTOM_KB)
+     {RGB_MATRIX_CUSTOM_RAINFALL, 11, "Rainfall"},
+     {RGB_MATRIX_CUSTOM_DRIFT, 12, "Drift"},
++    {RGB_MATRIX_CUSTOM_HOST_COLORS, 13, "Host"},
+ #endif
+ };
+ const uint8_t rgb_effects_n = sizeof rgb_effects / sizeof rgb_effects[0];
+diff --git a/keyboards/a_jazz/ak820pro/rgb_matrix_kb.inc b/keyboards/a_jazz/ak820pro/rgb_matrix_kb.inc
+index 013b1f40..b7c350b0 100644
+--- a/keyboards/a_jazz/ak820pro/rgb_matrix_kb.inc
++++ b/keyboards/a_jazz/ak820pro/rgb_matrix_kb.inc
+@@ -289,3 +289,33 @@ static bool DRIFT(effect_params_t* params) {
+ }
+ 
+ #endif // RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++/* HOST_COLORS -- every key shows the color the computer sent for it.
++ *
++ * The buffer is filled by the raw-HID channel 0x14 (hid_protocol.c); this only
++ * paints it, scaled by the board's brightness. If the host goes quiet for 2 s
++ * the keys go dark, so a closed program cannot leave a frozen picture behind.
++ */
++RGB_MATRIX_EFFECT(HOST_COLORS)
++
++#ifdef RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++extern uint8_t  host_colors[RGB_MATRIX_LED_COUNT][3];
++extern uint32_t host_colors_at;
++
++static bool HOST_COLORS(effect_params_t* params) {
++    RGB_MATRIX_USE_LIMITS(led_min, led_max);
++    bool    alive = timer_elapsed32(host_colors_at) < 2000;
++    uint8_t v     = rgb_matrix_config.hsv.v;
++    for (uint8_t i = led_min; i < led_max; i++) {
++        RGB_MATRIX_TEST_LED_FLAGS();
++        if (alive) {
++            rgb_matrix_set_color(i, scale8(host_colors[i][0], v), scale8(host_colors[i][1], v), scale8(host_colors[i][2], v));
++        } else {
++            rgb_matrix_set_color(i, 0, 0, 0);
++        }
++    }
++    return rgb_matrix_check_finished_leds(led_max);
++}
++
++#endif // RGB_MATRIX_CUSTOM_EFFECT_IMPLS

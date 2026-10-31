@@ -455,6 +455,7 @@ class Service:
             "capture": self.lights.capture.backend,
             "held": self.held,
             "gif_progress": self.gif_progress,
+            "zones": self.lights.host_ok,
             "gif_message": self.gif_message,
             "firmware": ("qmk" if getattr(self.kb, "qmk", False) else "stock") if self.kb else None,
             "fps": self.game.current() if self.cfg["fps_enabled"] else None,
