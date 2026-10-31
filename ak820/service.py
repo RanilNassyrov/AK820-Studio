@@ -48,7 +48,7 @@ DEFAULTS = {
     "screen_fallback": "wave",  # light mode while a game in exclusive fullscreen hides the screen
     "screen_dark_off": True,
     "screen_dark_level": 12,  # percent of full brightness below which a key stays off
-    "gif_max_frames": 24,  # each frame costs ~1.1 s of upload
+    "gif_max_frames": 24,  # stock: ~1.1 s of upload per frame, QMK: ~15 s
     "hold_screen_in_games": True,
     "qmk_effect": 3,
     "qmk_color": "#ff2060",
@@ -116,6 +116,7 @@ class Service:
         self.retry_at = 0.0
         self.held = False  # a fullscreen game is open, so screen uploads wait
         self.save_timer = None
+        self.gif_progress, self.gif_message, self.gif_done_until = None, "", 0.0
         self.report_at = time.monotonic()
         self.lights = Lights(lambda: self.kb, lambda: self.cfg, self.log)
         self.game = GameFps()
@@ -206,7 +207,13 @@ class Service:
         now = time.monotonic()
         self.game.want(self.cfg["fps_enabled"])
         game = self.game.current() if self.cfg["fps_enabled"] else None
-        if self.notice and now < self.notice_until:
+        if self.gif_progress:
+            done, total = self.gif_progress
+            wanted = (f"Zagruzka GIF {100 * done // total}%", "Ne nazhimayte Fn+G", qmk.ICON_NONE)
+            title = "Загрузка GIF"
+        elif now < self.gif_done_until:
+            wanted, title = ("GIF gotova", "Vklyuchit: Fn+G", qmk.ICON_NONE), "GIF загружена"
+        elif self.notice and now < self.notice_until:
             n = self.notice
             wanted = (n.app, " ".join(n.lines), qmk.ICON_NONE)
             title = f"Уведомление: {n.app}"
@@ -235,10 +242,11 @@ class Service:
         """QMK: the GIF goes to the keyboard's own flash and plays there with Fn+G. Lighting and
         text keep working during the upload, unlike on the stock firmware."""
         kb = self.kb
-        if not getattr(kb, "qmk", False) or self.progress:
+        if not getattr(kb, "qmk", False) or self.gif_progress:
             return
         self.log(f"загрузка GIF: {Path(path).name}")
-        self.progress = (0, 1)
+        self.gif_progress = (0, 1)
+        self.gif_message = "Загрузка началась, не нажимайте Fn+G"
         try:
             frames = render.load_image(path, self.cfg["gif_max_frames"])
             blob, picked = render.animation_blob(frames, qmk.FRAME_MS)
@@ -246,11 +254,18 @@ class Service:
             render.save_gif([(im, qmk.FRAME_MS) for im in picked], buf, fmt="GIF")
             self.preview = "data:image/gif;base64," + base64.b64encode(buf.getvalue()).decode()
             t = time.monotonic()
-            kb.write_flash(qmk.ANIM_SLOT, blob, lambda d, n: setattr(self, "progress", (d, n)))
+            minutes = max(1, round(len(picked) * 15 / 60))
+            self.gif_message = f"{len(picked)} кадров, примерно {minutes} мин. Не нажимайте Fn+G"
+            kb.write_flash(qmk.ANIM_SLOT, blob, lambda d, n: setattr(self, "gif_progress", (d, n)))
             key = "включается Fn+G" if kb.bind_anim_key() else "Fn+G занят, назначьте Anim в VIA"
             self.log(f"GIF на клавиатуре: {len(picked)} кадр. за {time.monotonic() - t:.0f} с, {key}")
+            self.gif_message = f"Готово: {len(picked)} кадров, проверено. Включить: Fn+G"
+            self.gif_done_until = time.monotonic() + 20
+        except (OSError, ValueError, qmk.AnimationPlaying) as e:
+            self.gif_message = f"Загрузка не завершена, GIF неполная. {e}"
+            self.log(f"GIF не загружена: {e}")
         finally:
-            self.progress = None
+            self.gif_progress = None
 
     def desired(self):
         cfg, lim, now = self.cfg, self.limits(), time.time()
@@ -439,6 +454,8 @@ class Service:
             if self.cfg["light_mode"] == "screen" else None,
             "capture": self.lights.capture.backend,
             "held": self.held,
+            "gif_progress": self.gif_progress,
+            "gif_message": self.gif_message,
             "firmware": ("qmk" if getattr(self.kb, "qmk", False) else "stock") if self.kb else None,
             "fps": self.game.current() if self.cfg["fps_enabled"] else None,
             "fps_error": self.game.error if self.cfg["fps_enabled"] else None,

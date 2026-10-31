@@ -22,7 +22,7 @@ VIA_GET_VALUE, VIA_SAVE = 0x08, 0x09
 VIA_GET_KEYCODE, VIA_SET_KEYCODE = 0x04, 0x05
 FLASH_CHANNEL = 0x11
 FC_ERASE, FC_BEGIN, FC_DATA, FC_END, FC_CRC, FC_UNLOCK, FC_CRC_NEXT = 0x02, 0x03, 0x04, 0x05, 0x06, 0x08, 0x09
-FS_OK, FS_BUSY, FS_MORE = 0x00, 0x01, 0x04
+FS_OK, FS_BUSY, FS_REFUSED, FS_MORE = 0x00, 0x01, 0x02, 0x04
 SECTOR, CHUNK = 4096, 27
 ANIM_SLOT = 0x540000  # the firmware's animation; Fn+G plays it
 FRAME_MS = 100  # the firmware's fixed playback speed, whatever the file says
@@ -54,6 +54,10 @@ def to_ascii(text):
         out.append(ch)
     text = unicodedata.normalize("NFKD", "".join(out)).encode("ascii", "ignore").decode()
     return " ".join(text.replace("()", " ").split())
+
+
+class AnimationPlaying(Exception):
+    pass
 
 
 def find():
@@ -99,6 +103,8 @@ class QmkKeyboard:
             reply = self.request(SET_VALUE, FLASH_CHANNEL, cmd, *args)
             if reply[3] != FS_BUSY:
                 break
+        if reply[3] == FS_REFUSED:  # the firmware's player holds the flash bus while it runs
+            raise AnimationPlaying("Выключите GIF клавишами Fn+G и загрузите снова")
         if reply[3] not in (FS_OK, FS_MORE):
             raise OSError(f"ошибка записи во флеш: код {reply[3]}")
         return reply

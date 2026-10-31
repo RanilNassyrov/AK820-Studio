@@ -192,8 +192,9 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
   <div class="card qmkOnly"><h2>Своя GIF на экране</h2>
     <p class="hint" style="margin-top:-6px">GIF записывается в память клавиатуры и играет сама, даже без программы. Включить и выключить: Fn+G. Скорость прошивки постоянная, 10 кадров в секунду.</p>
     <div class="setting"><div class="t"><b>Кадров не больше</b><span>Примерно 15 секунд загрузки на кадр: 24 кадра занимают 6 минут. Подсветка и текст в это время работают</span></div>
-      <div class="range"><input type="range" min="4" max="140" step="2" data-cfg="gif_max_frames"><output data-out="gif_max_frames"></output></div></div>
-    <div class="row" style="margin-top:12px"><button class="btn primary" onclick="api('upload_gif')">Выбрать и загрузить GIF…</button></div></div>
+      <div class="range"><input type="range" min="4" max="60" step="2" data-cfg="gif_max_frames"><output data-out="gif_max_frames"></output></div></div>
+    <div class="row" style="margin-top:12px"><button class="btn primary" id="gifBtn" onclick="api('upload_gif')">Выбрать и загрузить GIF…</button></div>
+    <div id="gifBox" hidden style="margin-top:14px"><div class="bar" style="width:100%"><i id="gifFill"></i></div><div class="hint" id="gifText" style="margin-top:8px"></div></div></div>
   <div class="card qmkOnly"><h2>FPS игры</h2>
     <div class="setting"><div class="t"><b>Показывать FPS на экране клавиатуры</b><span>Число и название активной игры, обновляется раз в полсекунды</span></div><label class="switch"><input type="checkbox" data-cfg="fps_enabled"><i></i></label></div></div>
   <div class="card">
@@ -468,6 +469,11 @@ async function poll() {
     const s = await api("status");
     screenPreview = s.light_preview;
     const isQmk = s.firmware === "qmk";
+    const gp = s.gif_progress;
+    $("#gifBox").hidden = !gp && !s.gif_message;
+    $("#gifBtn").disabled = !!gp;
+    $("#gifFill").style.width = gp ? Math.round(100 * gp[0] / gp[1]) + "%" : (/^Готово/.test(s.gif_message) ? "100%" : "0%");
+    $("#gifText").textContent = (gp ? Math.round(100 * gp[0] / gp[1]) + "%. " : "") + s.gif_message;
     $$(".qmkOnly").forEach(e => e.style.display = isQmk ? "" : "none");
     $$(".stockOnly").forEach(e => e.style.display = isQmk ? "none" : "");
     $("#stFw").textContent = isQmk ? "QMK (открытая)" : s.firmware === "stock" ? "Заводская" : "—";
