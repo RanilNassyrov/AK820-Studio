@@ -376,7 +376,8 @@ function buildFx() {
   $$("[data-fx]").forEach(t => t.onclick = () => t.dataset.fx === "hardware" ? (api("apply_hardware"), toast("Включён встроенный эффект клавиатуры"), cfg.light_mode = "hardware", sync()) : set("light_mode", t.dataset.fx));
 }
 function buildQmk() {
-  $("#qmkFx").innerHTML = D.qmk_effects.map(e => `<div class="tile" data-qfx="${e.id}"><b>${e.title}</b></div>`).join("") + `<div class="tile" data-qscreen="1"><b>Цвета экрана</b><span id="qmkScreenHint"></span></div>`;
+  $("#qmkFx").innerHTML = D.qmk_effects.map(e => `<div class="tile" data-qfx="${e.id}"><b>${e.title}</b></div>`).join("") + `<div class="tile" data-qscreen="1"><b>Цвета экрана</b><span id="qmkScreenHint"></span></div>` + D.effects.filter(e => !["screen", "hardware"].includes(e.id)).map(e => `<div class="tile hostOnly" data-qsoft="${e.id}"><b>${e.title}</b><span>${e.desc}</span></div>`).join("");
+  $$("[data-qsoft]").forEach(t => t.onclick = () => set("light_mode", t.dataset.qsoft));
   $$("[data-qfx]").forEach(t => t.onclick = async () => { cfg.qmk_effect = +t.dataset.qfx; cfg.light_mode = "hardware"; sync(); api("apply_hardware"); cfg = await api("update", {qmk_effect: cfg.qmk_effect, light_mode: "hardware"}); sync(); });
   $("[data-qscreen]").onclick = () => set("light_mode", "screen");
 }
@@ -438,6 +439,7 @@ function sync() {
   $$("[data-hw]").forEach(t => t.classList.toggle("on", +t.dataset.hw === cfg.hw_mode));
   $$("[data-qfx]").forEach(t => t.classList.toggle("on", cfg.light_mode === "hardware" && +t.dataset.qfx === cfg.qmk_effect));
   $("[data-qscreen]").classList.toggle("on", cfg.light_mode === "screen");
+  $$("[data-qsoft]").forEach(t => t.classList.toggle("on", cfg.light_mode === t.dataset.qsoft));
   $("#qmkColorRow").style.display = (D.qmk_effects.find(e => e.id === cfg.qmk_effect) || {}).color ? "" : "none";
   $("#customPath").textContent = cfg.idle_custom ? cfg.idle_custom.split(/[\\/]/).pop() : "";
   const qc = cfg.idle_style === "quote_clock"; $("#clockRow").style.display = qc ? "" : "none"; $("#clockNote").style.display = qc ? "" : "none";
@@ -470,6 +472,7 @@ async function poll() {
     screenPreview = s.light_preview;
     const isQmk = s.firmware === "qmk";
     $("#qmkLightNote").textContent = s.zones ? "Наша прошивка: эффекты клавиатуры и цвета экрана по зонам, каждая клавиша повторяет свою часть монитора. В игре нужен режим «Без рамки» (Borderless)." : "На этой прошивке «Цвета экрана» работают одним цветом на всю клавиатуру.";
+    $$(".hostOnly").forEach(e => e.style.display = s.zones ? "" : "none");
     $("#qmkScreenHint").textContent = s.zones ? "Каждая клавиша повторяет свою часть экрана" : "Один цвет на всю клавиатуру";
     const gp = s.gif_progress;
     $("#gifBox").hidden = !gp && !s.gif_message;

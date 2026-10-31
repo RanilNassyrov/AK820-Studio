@@ -65,12 +65,24 @@ class GameFps:
         elif not on and self.proc:
             self.proc.kill()
 
-    def current(self):
-        """(app name, fps) of the foreground application, or None if it isn't drawing frames."""
+    def top(self, count=4):
+        """The busiest applications right now, for the log."""
+        now = time.monotonic()
+        with self.lock:
+            rows = [(len(times), pid, name) for (pid, _), (name, times, seen) in self.chains.items()
+                    if now - seen <= STALE]
+        return sorted(rows, reverse=True)[:count]
+
+    def current(self, any_app=False):
+        """(app name, fps) of the foreground application, or None if it isn't drawing frames. With
+        any_app the busiest application counts: a fullscreen game's window can belong to another
+        process than the one drawing it."""
         pid, now, best = self.foreground(), time.monotonic(), None
         with self.lock:
             for (chain_pid, _), (name, times, seen) in self.chains.items():
-                if chain_pid != pid or now - seen > STALE or len(times) < 2 or times[-1] <= times[0]:
+                if not any_app and chain_pid != pid:
+                    continue
+                if now - seen > STALE or len(times) < 2 or times[-1] <= times[0]:
                     continue
                 fps = round((len(times) - 1) * 1000 / (times[-1] - times[0]))
                 if not best or fps > best[1]:  # launchers keep extra swap chains: take the busiest

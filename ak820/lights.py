@@ -9,7 +9,7 @@ import numpy as np
 
 from . import qmk
 from .hook import KeyPresses
-from .keyboard import key_grid
+from .keyboard import KEYS, ROW_ENDS, key_grid
 from .screencap import Capture, boost_thread, zones
 
 BANDS = 16
@@ -25,6 +25,21 @@ EFFECTS = {
     "screen": ("Цвета экрана", "Клавиши повторяют цвета того, что на мониторе"),
     "hardware": ("Встроенный эффект", "Один из 20 эффектов самой клавиатуры"),
 }
+
+
+def key_to_led():
+    """Stock light index -> QMK LED: both list the same keys row by row, left to right."""
+    rows, row = [], []
+    for name, index in KEYS.items():
+        row.append(index)
+        if name in ROW_ENDS:
+            rows.append(row)
+            row = []
+    leds = {}
+    for n, (x, y) in enumerate(qmk.LEDS):
+        leds.setdefault(y // 13, []).append((x, n))
+    led_rows = [[n for _, n in sorted(leds[k])] for k in sorted(leds)]
+    return {key: led for stock, led_row in zip(rows, led_rows) for key, led in zip(stock, led_row)}
 
 
 def hex_rgb(s):
@@ -93,6 +108,7 @@ class Lights(threading.Thread):
         self.audio_retry = 0.0
         self.sent, self.sent_at = None, 0.0
         self.host_kb, self.host_ok, self.host_on = None, False, False
+        self.host_brightness, self.key_to_led = None, {}
         self.stats = {"sent": 0, "worst_ms": 0}
         self.capture = Capture(log)
         self.ambient = None  # smoothed screen colors, one row per key in self.order
@@ -127,6 +143,7 @@ class Lights(threading.Thread):
             if self.host_ok:  # the firmware's LED order and real positions replace the stock grid
                 self.grid = {i: (x / 224, y / 64) for i, (x, y) in enumerate(qmk.LEDS)}
                 self.order, self.ambient = list(self.grid), None
+                self.key_to_led = key_to_led()
         if self.host_ok:
             return self.host_step(cfg, kb, screen)
         if screen and not self.capture.exclusive:
@@ -143,26 +160,32 @@ class Lights(threading.Thread):
         time.sleep(0.066)
 
     def host_step(self, cfg, kb, screen):
-        """Our firmware takes every key's color, so the keys show the screen zone by zone. A game in
-        exclusive fullscreen hides the picture: the firmware's own effect runs until it's back."""
-        visible = screen and not self.capture.exclusive
+        """Our firmware takes every key's color, so the computer can draw any effect on the keys: the
+        screen zone by zone, or the program's own effects. A game in exclusive fullscreen hides the
+        picture, so the chosen backup effect runs until it's back."""
+        mode = cfg["screen_fallback"] if screen and self.capture.exclusive else cfg["light_mode"]
+        drawn = mode != "hardware"
+        self._audio(mode == "visualizer")
+        if mode == "reactive":
+            self.keys.start()
+        else:
+            self.keys.stop()
         try:
-            if visible:
-                frame = self.screen_colors(cfg)
-                if frame:
-                    if not self.host_on:
-                        kb.host_mode(round(cfg["light_brightness"] * 2.55))
-                        self.host_on = True
-                    self.preview = frame
-                    kb.host_frame([frame[i] for i in self.order])
+            if drawn:
+                frame = self.frame(cfg, mode) or dict.fromkeys(self.order, (0, 0, 0))
+                if not self.host_on or cfg["light_brightness"] != self.host_brightness:
+                    self.host_brightness = cfg["light_brightness"]
+                    kb.host_mode(round(self.host_brightness * 2.55))
+                    self.host_on = True
+                self.preview = frame
+                kb.host_frame([frame[i] for i in self.order])
             elif self.host_on:
                 self.host_on = False
-                if screen:
-                    kb.effect(cfg["qmk_effect"], hex_rgb(cfg["qmk_color"]), round(cfg["qmk_brightness"] * 2.55),
-                              round(cfg["qmk_speed"] * 2.55))
+                kb.effect(cfg["qmk_effect"], hex_rgb(cfg["qmk_color"]), round(cfg["qmk_brightness"] * 2.55),
+                          round(cfg["qmk_speed"] * 2.55))
         except (OSError, ValueError):
             pass  # unplugged: the service reconnects
-        time.sleep(0.01 if visible else 0.066)
+        time.sleep(0.01 if drawn else 0.066)
 
     def step(self):
         cfg = self.get_cfg()
@@ -306,6 +329,7 @@ class Lights(threading.Thread):
         dim = tuple(c // 8 for c in base)
         out = {i: dim for i in self.grid}
         for light, t in presses:
+            light = self.key_to_led.get(light, light)
             if light not in self.grid:
                 continue
             age = now - t

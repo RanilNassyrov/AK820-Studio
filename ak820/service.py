@@ -206,7 +206,12 @@ class Service:
         The firmware drops the text after ~3 minutes of silence, hence the keepalive."""
         now = time.monotonic()
         self.game.want(self.cfg["fps_enabled"])
-        game = self.game.current() if self.cfg["fps_enabled"] else None
+        fullscreen = in_fullscreen()
+        game = self.game.current(fullscreen) if self.cfg["fps_enabled"] else None
+        if fullscreen and now - self.report_at >= self.REPORT_EVERY:
+            self.report_at = now
+            self.log(f"игра (состояние {fullscreen_state()}): окно {self.game.foreground()}, "
+                     f"FPS {game}, кадры {self.game.top()}, PresentMon: {self.game.error or 'ok'}")
         if self.gif_progress:
             done, total = self.gif_progress
             wanted = (f"Zagruzka GIF {100 * done // total}%", "Ne nazhimayte Fn+G", qmk.ICON_NONE)
@@ -458,7 +463,7 @@ class Service:
             "zones": self.lights.host_ok,
             "gif_message": self.gif_message,
             "firmware": ("qmk" if getattr(self.kb, "qmk", False) else "stock") if self.kb else None,
-            "fps": self.game.current() if self.cfg["fps_enabled"] else None,
+            "fps": self.game.current(in_fullscreen()) if self.cfg["fps_enabled"] else None,
             "fps_error": self.game.error if self.cfg["fps_enabled"] else None,
             "exclusive": self.lights.capture.exclusive,
             "logs": list(self.logs)[-60:],
