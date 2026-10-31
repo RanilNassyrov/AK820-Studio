@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 
 from . import render
 from .keyboard import KEYS, MODES, ROW_ENDS
-from .lights import EFFECTS
+from .lights import EFFECTS, key_to_led
 from .qmk import EFFECTS as QMK_EFFECTS
 from .service import ROOT, UPLOADING, Service
 
@@ -64,6 +64,7 @@ class Api:
             "cfg": self._s.cfg,
             "effects": [{"id": k, "title": t, "desc": d} for k, (t, d) in EFFECTS.items()],
             "qmk_effects": [{"id": i, "title": t, "color": c} for i, t, c in QMK_EFFECTS],
+            "key_to_led": key_to_led(),
             "hw_modes": [{"id": i, "name": HW_NAMES[n], "flags": f} for i, (n, f) in MODES.items()],
             "idle": [{"id": k, "title": t} for k, t in render.IDLE.items()],
             "layout": layout(),
@@ -74,6 +75,13 @@ class Api:
 
     def status(self):
         return self._s.status()
+
+    def key_colors(self):
+        """What the computer is drawing on the keys right now, or None for the keyboard's own effect."""
+        lights = self._s.lights
+        if not lights.host_on:
+            return None
+        return ["#%02x%02x%02x" % lights.preview.get(i, (0, 0, 0)) for i in lights.order]
 
     def update(self, changes):
         self._s.update(changes)
