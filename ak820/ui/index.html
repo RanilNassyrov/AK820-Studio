@@ -181,7 +181,7 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
       <div class="row" style="margin-top:14px"><button class="btn small" onclick="testNotice('Discord')">Проверить уведомление</button></div>
     </div>
   </div>
-  <div class="card"><h2>Быстрая смена подсветки</h2><div class="tiles" id="quickFx"></div></div>
+  <div class="card stockOnly"><h2>Быстрая смена подсветки</h2><div class="tiles" id="quickFx"></div></div>
   <div class="card"><h2>Журнал</h2><div class="log" id="log"></div></div>
 </section>
 
@@ -229,9 +229,14 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
 <!-- LIGHT -->
 <section class="page" id="light">
   <h1>Подсветка</h1><p class="sub">Эффекты программы работают, пока она запущена. Встроенные эффекты сохраняются в самой клавиатуре.</p>
-  <div class="note qmkOnly" style="margin:0 0 18px">На прошивке QMK из программы пока работает только «Цвета экрана», одним цветом на всю клавиатуру. Цвета по зонам требуют доработки прошивки. Другие эффекты выбираются на клавиатуре: Fn + нажатие ручки.</div>
+  <div class="note qmkOnly" style="margin:0 0 18px">На прошивке QMK доступны её эффекты и «Цвета экрана» одним цветом на всю клавиатуру. Цвета по зонам требуют доработки прошивки.</div>
   <div class="kbd-wrap"><div class="kbd" id="kbd"></div></div>
-  <div class="card" style="margin-top:18px"><h2>Эффект</h2><div class="tiles" id="fxTiles"></div></div>
+  <div class="card qmkOnly" style="margin-top:18px"><h2>Эффекты клавиатуры</h2>
+    <div class="tiles" id="qmkFx"></div>
+    <div class="setting" id="qmkColorRow" style="margin-top:12px"><div class="t"><b>Цвет</b></div><input type="color" data-cfg="qmk_color"></div>
+    <div class="setting"><div class="t"><b>Яркость</b></div><div class="range"><input type="range" min="5" max="100" step="5" data-cfg="qmk_brightness"><output data-out="qmk_brightness" data-unit="%"></output></div></div>
+    <div class="setting"><div class="t"><b>Скорость</b></div><div class="range"><input type="range" min="0" max="100" step="5" data-cfg="qmk_speed"><output data-out="qmk_speed" data-unit="%"></output></div></div></div>
+  <div class="card stockOnly" style="margin-top:18px"><h2>Эффект</h2><div class="tiles" id="fxTiles"></div></div>
   <div class="card" id="softCard">
     <h2>Настройки эффекта</h2>
     <div class="setting" id="colorsRow"><div class="t"><b>Цвета</b><span id="colorsHint">Основной и второй цвет</span></div>
@@ -251,7 +256,7 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
     <div class="setting" id="speedRow"><div class="t"><b id="speedTitle">Скорость</b></div><div class="range"><input type="range" min="1" max="5" data-cfg="light_speed"><output data-out="light_speed"></output></div></div>
     <div class="setting"><div class="t"><b>Яркость</b></div><div class="range"><input type="range" min="10" max="100" step="5" data-cfg="light_brightness"><output data-out="light_brightness" data-unit="%"></output></div></div>
   </div>
-  <div class="card" id="hwCard">
+  <div class="card stockOnly" id="hwCard">
     <h2>Встроенный эффект клавиатуры</h2>
     <div class="hwgrid" id="hwGrid"></div>
     <div class="setting" style="margin-top:10px"><div class="t"><b>Цвет</b><span>Или радуга</span></div>
@@ -261,7 +266,7 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
     <div class="setting"><div class="t"><b>Направление</b></div><div class="seg" data-seg="hw_direction" data-num><button data-v="0">→</button><button data-v="1">←</button></div></div>
     <div class="row" style="margin-top:14px"><button class="btn primary" onclick="api('apply_hardware');toast('Эффект записан в клавиатуру')">Применить к клавиатуре</button></div>
   </div>
-  <div class="card">
+  <div class="card stockOnly">
     <h2>Свои цвета клавиш</h2>
     <p class="hint" style="margin-top:-6px">Выберите цвет и нажимайте на клавиши на картинке выше. Раскладка сохраняется в клавиатуру и работает даже без программы.</p>
     <div class="row" style="justify-content:space-between">
@@ -297,7 +302,6 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
   <h1>Настройки</h1><p class="sub">Запуск и ограничения.</p>
   <div class="card">
     <div class="setting"><div class="t"><b>Запускать вместе с Windows</b><span>Программа стартует свёрнутой в трей</span></div><label class="switch"><input type="checkbox" id="autostart"><i></i></label></div>
-    <div class="setting"><div class="t"><b>Открывать свёрнутой</b><span>Окно не показывается при запуске, только значок у часов</span></div><label class="switch"><input type="checkbox" data-cfg="start_minimized"><i></i></label></div>
     <div class="setting"><div class="t"><b>Синхронизировать часы при подключении</b></div><label class="switch"><input type="checkbox" data-cfg="sync_time_on_start"><i></i></label></div>
     <div class="setting"><div class="t"><b>Не больше обновлений экрана в час</b><span>Бережёт флеш-память клавиатуры</span></div>
       <div class="range"><input type="range" min="10" max="60" step="5" data-cfg="max_uploads_per_hour"><output data-out="max_uploads_per_hour"></output></div></div>
@@ -332,7 +336,7 @@ async function set(k, v) { cfg[k] = v; cfg = await api("update", {[k]: v}); sync
 
 window.addEventListener("pywebviewready", async () => {
   D = await api("init"); cfg = D.cfg; custom = {...cfg.custom_keys};
-  buildNav(); buildIdle(); buildFx(); buildHw(); buildKbd(); buildPalette(); buildApps(); bindInputs();
+  buildNav(); buildIdle(); buildFx(); buildQmk(); buildHw(); buildKbd(); buildPalette(); buildApps(); bindInputs();
   $("#autostart").checked = D.autostart;
   $("#autostart").onchange = async e => { e.target.checked = await api("set_autostart", e.target.checked); toast(e.target.checked ? "Автозапуск включён" : "Автозапуск выключен"); };
   sync(); poll(); requestAnimationFrame(animate);
@@ -369,6 +373,11 @@ function buildFx() {
   const html = D.effects.map(f => `<div class="tile" data-fx="${f.id}"><div class="swatch" style="background:${FX_BG[f.id]}"></div><b>${f.title}</b><span>${f.desc}</span></div>`).join("");
   $("#fxTiles").innerHTML = html; $("#quickFx").innerHTML = html;
   $$("[data-fx]").forEach(t => t.onclick = () => t.dataset.fx === "hardware" ? (api("apply_hardware"), toast("Включён встроенный эффект клавиатуры"), cfg.light_mode = "hardware", sync()) : set("light_mode", t.dataset.fx));
+}
+function buildQmk() {
+  $("#qmkFx").innerHTML = D.qmk_effects.map(e => `<div class="tile" data-qfx="${e.id}"><b>${e.title}</b></div>`).join("") + `<div class="tile" data-qscreen="1"><b>Цвета экрана</b><span>Один цвет на всю клавиатуру</span></div>`;
+  $$("[data-qfx]").forEach(t => t.onclick = async () => { cfg.qmk_effect = +t.dataset.qfx; cfg.light_mode = "hardware"; sync(); api("apply_hardware"); cfg = await api("update", {qmk_effect: cfg.qmk_effect, light_mode: "hardware"}); sync(); });
+  $("[data-qscreen]").onclick = () => set("light_mode", "screen");
 }
 function buildHw() {
   $("#hwGrid").innerHTML = D.hw_modes.map(m => `<div class="tile" data-hw="${m.id}"><b>${m.name}</b></div>`).join("");
@@ -426,6 +435,9 @@ function sync() {
   $$("[data-idle]").forEach(t => t.classList.toggle("on", t.dataset.idle === cfg.idle_style));
   $$("[data-fx]").forEach(t => t.classList.toggle("on", t.dataset.fx === cfg.light_mode));
   $$("[data-hw]").forEach(t => t.classList.toggle("on", +t.dataset.hw === cfg.hw_mode));
+  $$("[data-qfx]").forEach(t => t.classList.toggle("on", cfg.light_mode === "hardware" && +t.dataset.qfx === cfg.qmk_effect));
+  $("[data-qscreen]").classList.toggle("on", cfg.light_mode === "screen");
+  $("#qmkColorRow").style.display = (D.qmk_effects.find(e => e.id === cfg.qmk_effect) || {}).color ? "" : "none";
   $("#customPath").textContent = cfg.idle_custom ? cfg.idle_custom.split(/[\\/]/).pop() : "";
   const qc = cfg.idle_style === "quote_clock"; $("#clockRow").style.display = qc ? "" : "none"; $("#clockNote").style.display = qc ? "" : "none";
   const m = cfg.light_mode;
@@ -457,6 +469,7 @@ async function poll() {
     screenPreview = s.light_preview;
     const isQmk = s.firmware === "qmk";
     $$(".qmkOnly").forEach(e => e.style.display = isQmk ? "" : "none");
+    $$(".stockOnly").forEach(e => e.style.display = isQmk ? "none" : "");
     $("#stFw").textContent = isQmk ? "QMK (открытая)" : s.firmware === "stock" ? "Заводская" : "—";
     $("#stFpsRow").style.display = isQmk && cfg.fps_enabled ? "" : "none";
     $("#stFps").textContent = s.fps_error || (s.fps ? `${s.fps[1]} — ${s.fps[0]}` : "нет активной игры");

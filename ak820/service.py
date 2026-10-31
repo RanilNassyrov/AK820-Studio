@@ -50,6 +50,10 @@ DEFAULTS = {
     "screen_dark_level": 12,  # percent of full brightness below which a key stays off
     "gif_max_frames": 24,  # each frame costs ~1.1 s of upload
     "hold_screen_in_games": True,
+    "qmk_effect": 3,
+    "qmk_color": "#ff2060",
+    "qmk_brightness": 100,  # percent
+    "qmk_speed": 50,  # percent
     "fps_enabled": True,  # game FPS on the screen; needs the QMK firmware
     "hw_mode": 8,
     "hw_color": "#ff2060",
@@ -59,7 +63,6 @@ DEFAULTS = {
     "hw_direction": 0,
     "custom_keys": {},
     "sync_time_on_start": True,
-    "start_minimized": False,
     "keyboard_load": "normal",  # "gentle": fewer screen uploads and lighter live lighting
 }
 
@@ -112,6 +115,7 @@ class Service:
         self.cancel = threading.Event()
         self.retry_at = 0.0
         self.held = False  # a fullscreen game is open, so screen uploads wait
+        self.save_timer = None
         self.report_at = time.monotonic()
         self.lights = Lights(lambda: self.kb, lambda: self.cfg, self.log)
         self.game = GameFps()
@@ -446,6 +450,20 @@ class Service:
         changes = {k: v for k, v in changes.items() if k in DEFAULTS}
         self.cfg = {**self.cfg, **changes}
         self.save()
+        if any(k.startswith("qmk_") for k in changes) and getattr(self.kb, "qmk", False) \
+                and self.cfg["light_mode"] == "hardware":
+            self.background(self.apply_qmk_effect)
+
+    def apply_qmk_effect(self):
+        c, kb = self.cfg, self.kb
+        kb.effect(c["qmk_effect"], hex_rgb(c["qmk_color"]), round(c["qmk_brightness"] * 2.55),
+                  round(c["qmk_speed"] * 2.55))
+        # a save writes the keyboard's settings memory, so it waits for the sliders to stop moving
+        if self.save_timer:
+            self.save_timer.cancel()
+        self.save_timer = threading.Timer(3, lambda: self.background(kb.save_lighting))
+        self.save_timer.daemon = True
+        self.save_timer.start()
 
     def refresh_screen(self):
         self.force = True
@@ -461,7 +479,7 @@ class Service:
         c = self.cfg
         self.update({"light_mode": "hardware"})
         if getattr(self.kb, "qmk", False):
-            self.log("на QMK эффекты выбираются на самой клавиатуре: Fn + нажатие ручки")
+            self.background(self.apply_qmk_effect)
         elif self.kb:
             rgb = None if c["hw_rainbow"] else hex_rgb(c["hw_color"])
             self.background(lambda: (self.kb.set_mode(c["hw_mode"], rgb, c["hw_brightness"], c["hw_speed"],

@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 from . import render
 from .keyboard import KEYS, MODES, ROW_ENDS
 from .lights import EFFECTS
+from .qmk import EFFECTS as QMK_EFFECTS
 from .service import ROOT, UPLOADING, Service
 
 UI = Path(__file__).resolve().parent / "ui" / "index.html"
@@ -62,6 +63,7 @@ class Api:
         return {
             "cfg": self._s.cfg,
             "effects": [{"id": k, "title": t, "desc": d} for k, (t, d) in EFFECTS.items()],
+            "qmk_effects": [{"id": i, "title": t, "color": c} for i, t, c in QMK_EFFECTS],
             "hw_modes": [{"id": i, "name": HW_NAMES[n], "flags": f} for i, (n, f) in MODES.items()],
             "idle": [{"id": k, "title": t} for k, t in render.IDLE.items()],
             "layout": layout(),
@@ -135,8 +137,14 @@ def tray_image():
 def single_instance():
     ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\AK820StudioApp")
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
-        ctypes.windll.user32.MessageBoxW(None, "AK820 Studio уже запущена — значок в трее, рядом с часами.",
-                                         "AK820 Studio", 0x40)
+        # the shortcut was clicked again, most likely with the window in the tray: bring it back
+        user32 = ctypes.windll.user32
+        user32.FindWindowW.restype = ctypes.c_void_p
+        window = user32.FindWindowW(None, "AK820 Studio")
+        if window:
+            user32.ShowWindow.argtypes = user32.SetForegroundWindow.argtypes = None
+            user32.ShowWindow(ctypes.c_void_p(window), 9)  # SW_RESTORE
+            user32.SetForegroundWindow(ctypes.c_void_p(window))
         sys.exit(0)
 
 
@@ -147,7 +155,7 @@ def run(minimized=False):
     api = Api(service)
     window = webview.create_window("AK820 Studio", str(UI), js_api=api, width=1180, height=780,
                                    min_size=(980, 640), background_color="#0d0e14",
-                                   hidden=minimized or service.cfg["start_minimized"])
+                                   hidden=minimized)
     api._window = window
     quitting = threading.Event()
 

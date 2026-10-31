@@ -17,7 +17,8 @@ RAW_PAGE, RAW_USAGE = 0xFF60, 0x61
 SET_VALUE = 0x07
 RTC_CHANNEL, RTC_SET_TIME = 0x10, 0x01
 TEXT_CHANNEL, TEXT_CLEAR, TEXT_SET_LINE, TEXT_PLAYBACK = 0x12, 0x02, 0x03, 0x04
-VIA_RGB_CHANNEL, VIA_BRIGHTNESS, VIA_EFFECT, VIA_COLOR = 0x03, 0x01, 0x02, 0x04
+VIA_RGB_CHANNEL, VIA_BRIGHTNESS, VIA_EFFECT, VIA_SPEED, VIA_COLOR = 0x03, 0x01, 0x02, 0x03, 0x04
+VIA_GET_VALUE, VIA_SAVE = 0x08, 0x09
 VIA_GET_KEYCODE, VIA_SET_KEYCODE = 0x04, 0x05
 FLASH_CHANNEL = 0x11
 FC_ERASE, FC_BEGIN, FC_DATA, FC_END, FC_CRC, FC_UNLOCK, FC_CRC_NEXT = 0x02, 0x03, 0x04, 0x05, 0x06, 0x08, 0x09
@@ -29,6 +30,10 @@ MATRIX = 6, 15
 KC_G, KC_TRANSPARENT, ANIM_TOG = 0x000A, 0x0001, 0x7E11  # QK_KB_0 + 17 in via.json
 FN_LAYERS = 1, 3  # Windows and Mac sides
 EFFECT_SOLID = 1
+# QMK numbers the effects enabled in the firmware (keyboard.json), then its custom ones
+EFFECTS = [(1, "Один цвет", True), (2, "Буквы и модификаторы", True), (3, "Перелив всех клавиш", False),
+           (4, "Радуга слева направо", False), (5, "Радуга сверху вниз", False), (6, "Капли", True),
+           (7, "Тепловая карта нажатий", False), (8, "Дождь", True), (9, "Дрейф", True)]
 ICON_NONE, ICON_PLAY, ICON_PAUSE, ICON_STOP = 0, 1, 2, 3
 LINE_MAX = (19, 21)  # line 0 shares its row with the play icon
 
@@ -156,6 +161,21 @@ class QmkKeyboard:
         """State 0 hands the band back to the clock; times are whole seconds."""
         self.send(SET_VALUE, TEXT_CHANNEL, TEXT_PLAYBACK, state, position >> 8 & 255, position & 255,
                   duration >> 8 & 255, duration & 255)
+
+    def effect(self, mode, rgb, brightness, speed):
+        """A firmware effect; brightness and speed 0-255. Stays until save() or a power-off."""
+        h, s, _ = colorsys.rgb_to_hsv(*(c / 255 for c in rgb))
+        self.color = None
+        self.send(SET_VALUE, VIA_RGB_CHANNEL, VIA_EFFECT, mode)
+        self.send(SET_VALUE, VIA_RGB_CHANNEL, VIA_BRIGHTNESS, brightness)
+        self.send(SET_VALUE, VIA_RGB_CHANNEL, VIA_SPEED, speed)
+        self.send(SET_VALUE, VIA_RGB_CHANNEL, VIA_COLOR, round(h * 255), round(s * 255))
+
+    def save_lighting(self):
+        self.send(VIA_SAVE, VIA_RGB_CHANNEL, 0)
+
+    def current_effect(self):
+        return self.request(VIA_GET_VALUE, VIA_RGB_CHANNEL, VIA_EFFECT)[3]
 
     def solid(self, rgb):
         """The whole keyboard in one color, through VIA's lighting channel (not saved)."""
