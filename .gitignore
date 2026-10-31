@@ -5,3 +5,5 @@ __pycache__/
 config.json
 ak820.log
 .screen_state
+# downloaded firmware and the flashing tool
+firmware/
