@@ -23,9 +23,8 @@ VIA_GET_KEYCODE, VIA_SET_KEYCODE = 0x04, 0x05
 FLASH_CHANNEL = 0x11
 FC_ERASE, FC_BEGIN, FC_DATA, FC_END, FC_CRC, FC_UNLOCK, FC_CRC_NEXT = 0x02, 0x03, 0x04, 0x05, 0x06, 0x08, 0x09
 FS_OK, FS_BUSY, FS_REFUSED, FS_MORE = 0x00, 0x01, 0x02, 0x04
-SECTOR, CHUNK = 4096, 27
-ANIM_SLOT = 0x540000  # the firmware's animation; Fn+G plays it
-FRAME_MS = 100  # the firmware's fixed playback speed, whatever the file says
+SECTOR, PAGE, CHUNK = 4096, 256, 27
+ANIM_SLOT, ANIM_FRAMES = 0x540000, 244  # the firmware's animation, Fn+G plays it; what fits before the fonts
 MATRIX = 6, 15
 KC_G, KC_TRANSPARENT, ANIM_TOG = 0x000A, 0x0001, 0x7E11  # QK_KB_0 + 17 in via.json
 FN_LAYERS = 1, 3  # Windows and Mac sides
@@ -38,7 +37,9 @@ PRINTED_KEYS = {
     (3, 14): (0x004E, (0x004D,)),          # PgDn, End
     (3, 0): (0x0039, (0x5221, 0x5223)),    # Caps Lock, a second Fn
 }
-HOST_COLORS_CHANNEL, EFFECT_HOST, HOST_PER_PACKET = 0x14, 10, 9  # our firmware patch
+HOST_COLORS_CHANNEL, EFFECT_HOST, HOST_PER_PACKET = 0x14, 17, 9  # our firmware patch
+KEY_COLORS_CHANNEL, KC_LED_READ, KC_PAL_SET, KC_PAL_SAVE = 0x15, 1, 2, 3
+EFFECT_KEY_COLORS = 11
 # each LED's place on the board, QMK's 0-224 by 0-64 grid (keyboard.json)
 LEDS = [
     (7, 5), (24, 5), (38, 5), (52, 5), (66, 5), (84, 5), (98, 5), (112, 5), (126, 5), (144, 5),
@@ -54,9 +55,11 @@ LEDS = [
 EFFECT_SOLID = 1
 # QMK numbers the effects enabled in the firmware (keyboard.json), then its custom ones
 # the flag says whether the effect uses the chosen color: rain and drops pick random ones
-EFFECTS = [(1, "Один цвет", True), (2, "Буквы и модификаторы", True), (3, "Перелив всех клавиш", False),
-           (4, "Радуга слева направо", False), (5, "Радуга сверху вниз", False), (6, "Капли", False),
-           (7, "Тепловая карта нажатий", False), (8, "Дождь", False), (9, "Дрейф", True)]
+EFFECTS = [(1, "Один цвет", True), (EFFECT_KEY_COLORS, "Свои цвета клавиш", False), (3, "Перелив всех клавиш", False),
+           (4, "Радуга слева направо", False), (5, "Радуга сверху вниз", False), (16, "Спираль", False),
+           (10, "Дыхание", True), (9, "Северное сияние", True), (6, "Капли", False), (8, "Дождь", False),
+           (14, "Цифровой дождь", True), (15, "Огонь", False), (12, "Реакция на нажатия", True),
+           (13, "Круги от нажатий", True), (7, "Тепловая карта нажатий", False)]
 MODIFIER_LEDS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 27, 28, 29, 43, 44, 56, 57, 58, 69, 70, 71, 72, 73, 75, 76, 77, 78, 79, 80)  # keyboard.json flags: "Буквы и модификаторы" colors these apart
 ICON_NONE, ICON_PLAY, ICON_PAUSE, ICON_STOP = 0, 1, 2, 3
 LINE_MAX = (19, 21)  # line 0 shares its row with the play icon
@@ -127,11 +130,37 @@ class QmkKeyboard:
             reply = self.request(SET_VALUE, FLASH_CHANNEL, cmd, *args)
             if reply[3] != FS_BUSY:
                 break
+        return self.flash_status(reply)
+
+    @staticmethod
+    def flash_status(reply):
         if reply[3] == FS_REFUSED:  # the firmware's player holds the flash bus while it runs
             raise AnimationPlaying("Выключите GIF клавишами Fn+G и загрузите снова")
         if reply[3] not in (FS_OK, FS_MORE):
             raise OSError(f"ошибка записи во флеш: код {reply[3]}")
         return reply
+
+    def write_page(self, page):
+        """One flash page. Its packets go out together, a third faster than waiting for each echo.
+        Only the last one programs the page, so only it can come back BUSY, with nothing behind
+        it on the wire to overtake it, and sending it again is safe."""
+        parts = [page[off:off + CHUNK] for off in range(0, len(page), CHUNK)]
+        with self.lock:
+            for part in parts:
+                self.dev.write(bytes((0, SET_VALUE, FLASH_CHANNEL, FC_DATA, len(part), *part)).ljust(33, b"\0"))
+            replies = []
+            while len(replies) < len(parts):
+                reply = bytes(self.dev.read(32, 2000))
+                if not reply:
+                    raise OSError("клавиатура не ответила")
+                if reply[:3] == bytes((SET_VALUE, FLASH_CHANNEL, FC_DATA)):  # not a late echo of send()
+                    replies.append(reply)
+        for reply in replies[:-1]:
+            self.flash_status(reply)
+        if replies[-1][3] == FS_BUSY:
+            self.flash(FC_DATA, len(parts[-1]), *parts[-1])
+        else:
+            self.flash_status(replies[-1])
 
     def write_flash(self, addr, blob, progress=lambda done, total: None):
         """Erase, write and verify. Only the animation slot needs the unlock; the firmware refuses
@@ -139,16 +168,15 @@ class QmkKeyboard:
         total = len(blob)
         self.flash(FC_UNLOCK, 1)
         try:
-            sectors = (total + SECTOR - 1) // SECTOR
+            sectors, pages = (total + SECTOR - 1) // SECTOR, (total + PAGE - 1) // PAGE
             for n in range(sectors):
                 a = addr + n * SECTOR
                 self.flash(FC_ERASE, a >> 16 & 255, a >> 8 & 255, a & 255)
-                progress(n + 1, sectors + total // CHUNK)
+                progress(n + 1, sectors + pages)
             self.flash(FC_BEGIN, addr >> 16 & 255, addr >> 8 & 255, addr & 255)
-            for off in range(0, total, CHUNK):
-                part = blob[off:off + CHUNK]
-                self.flash(FC_DATA, len(part), *part)
-                progress(sectors + off // CHUNK, sectors + total // CHUNK)
+            for n in range(pages):
+                self.write_page(blob[n * PAGE:(n + 1) * PAGE])
+                progress(sectors + n + 1, sectors + pages)
             self.flash(FC_END)
             reply = self.flash(FC_CRC, addr >> 16 & 255, addr >> 8 & 255, addr & 255,
                                total >> 16 & 255, total >> 8 & 255, total & 255)
@@ -242,6 +270,25 @@ class QmkKeyboard:
         for first in range(0, len(colors), HOST_PER_PACKET):
             part = colors[first:first + HOST_PER_PACKET]
             self.send(SET_VALUE, HOST_COLORS_CHANNEL, first, len(part), *(c for rgb in part for c in rgb))
+
+    def read_leds(self):
+        """What every LED is set to right now, in LEDS order, whatever effect drew it."""
+        out = []
+        for first in range(0, len(LEDS), HOST_PER_PACKET):
+            reply = self.request(SET_VALUE, KEY_COLORS_CHANNEL, KC_LED_READ, first)
+            part = min(HOST_PER_PACKET, len(LEDS) - first)
+            out += [tuple(reply[4 + i * 3:7 + i * 3]) for i in range(part)]
+        return out
+
+    def set_palette(self, colors):
+        """The "Свои цвета клавиш" effect's colors, in LEDS order. Takes effect at once, unsaved."""
+        for first in range(0, len(colors), HOST_PER_PACKET):
+            part = colors[first:first + HOST_PER_PACKET]
+            self.send(SET_VALUE, KEY_COLORS_CHANNEL, KC_PAL_SET, first, len(part), *(c for rgb in part for c in rgb))
+
+    def save_palette(self):
+        """Stores it on the keyboard. True while a GIF plays: the firmware saves when it stops."""
+        return self.request(SET_VALUE, KEY_COLORS_CHANNEL, KC_PAL_SAVE)[3] == 1
 
     def solid(self, rgb):
         """The whole keyboard in one color, through VIA's lighting channel (not saved)."""

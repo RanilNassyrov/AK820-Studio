@@ -1,6 +1,6 @@
 # Builds our firmware in the official QMK Docker container. Touches nothing on the keyboard.
 # cmd /c for the docker checks: Windows PowerShell treats anything on a program's stderr as an error.
-$fw = "C:\Users\admin\AK820-Screen\firmware"
+$fw = $PSScriptRoot
 
 function Docker-Ready {
     cmd /c "docker info >nul 2>&1"

@@ -47,7 +47,8 @@ DEFAULTS = {
     "screen_fallback": "wave",  # light mode while a game in exclusive fullscreen hides the screen
     "screen_dark_off": True,
     "screen_dark_level": 12,  # percent of full brightness below which a key stays off
-    "gif_max_frames": 24,  # stock: ~1.1 s of upload per frame, QMK: ~15 s
+    "gif_max_frames": 24,  # stock: ~1.1 s of upload per frame
+    "gif_keyboard_frames": qmk.ANIM_FRAMES,  # QMK: thin only what doesn't fit
     "hold_screen_in_games": True,
     "qmk_effect": 3,
     "qmk_color": "#ff2060",
@@ -60,6 +61,7 @@ DEFAULTS = {
     "hw_speed": 3,
     "hw_direction": 0,
     "custom_keys": {},
+    "key_palette": [],  # QMK: "#rrggbb" per LED, empty until first painted
     "sync_time_on_start": True,
     "keyboard_load": "normal",  # "gentle": fewer screen uploads and lighter live lighting
 }
@@ -113,7 +115,7 @@ class Service:
         self.cancel = threading.Event()
         self.retry_at = 0.0
         self.held = False  # a fullscreen game is open, so screen uploads wait
-        self.save_timer = None
+        self.save_timer = self.palette_timer = None
         self.gif_progress, self.gif_message, self.gif_done_until = None, "", 0.0
         self.report_at = time.monotonic()
         self.lights = Lights(lambda: self.kb, lambda: self.cfg, self.log)
@@ -167,6 +169,8 @@ class Service:
         if getattr(self.kb, "qmk", False):
             fixed = self.kb.match_printed_keys()
             self.kb.bind_anim_key()
+            if self.cfg["key_palette"]:
+                self.kb.set_palette([hex_rgb(c) for c in self.cfg["key_palette"]])
             if fixed:
                 self.log(f"клавиши приведены к надписям: {fixed}")
         self.shown = None
@@ -245,13 +249,10 @@ class Service:
         self.gif_progress = (0, 1)
         self.gif_message = "Загрузка началась, не нажимайте Fn+G"
         try:
-            frames = render.load_image(path, self.cfg["gif_max_frames"])
-            blob, picked = render.animation_blob(frames, qmk.FRAME_MS)
-            buf = io.BytesIO()
-            render.save_gif([(im, qmk.FRAME_MS) for im in picked], buf, fmt="GIF")
-            self.preview = "data:image/gif;base64," + base64.b64encode(buf.getvalue()).decode()
+            frames = render.load_image(path, self.cfg["gif_keyboard_frames"], qmk.ANIM_FRAMES)
+            blob, picked = render.animation_blob(frames, qmk.ANIM_FRAMES)
             t = time.monotonic()
-            minutes = max(1, round(len(picked) * 15 / 60))
+            minutes = max(1, round(len(picked) * 6 / 60))
             self.gif_message = f"{len(picked)} кадров, примерно {minutes} мин. Не нажимайте Fn+G"
             kb.write_flash(qmk.ANIM_SLOT, blob, lambda d, n: setattr(self, "gif_progress", (d, n)))
             key = "включается Fn+G" if kb.bind_anim_key() else "Fn+G занят, назначьте Anim в VIA"
@@ -478,6 +479,25 @@ class Service:
                                           and self.background(kb.save_lighting))
         self.save_timer.daemon = True
         self.save_timer.start()
+
+    def set_palette(self, colors):
+        self.update({"key_palette": colors})
+        kb = self.kb
+        if not getattr(kb, "qmk", False):
+            return
+        self.background(kb.set_palette, [hex_rgb(c) for c in colors])
+        # painting goes key by key, and each save erases a flash sector
+        if self.palette_timer:
+            self.palette_timer.cancel()
+        self.palette_timer = threading.Timer(2, lambda: self.background(self.save_palette, kb))
+        self.palette_timer.daemon = True
+        self.palette_timer.start()
+
+    def save_palette(self, kb):
+        if kb.save_palette():
+            self.log("свои цвета сохранятся, когда GIF остановится (Fn+G)")
+        else:
+            self.log("свои цвета клавиш сохранены в клавиатуру")
 
     def refresh_screen(self):
         self.force = True

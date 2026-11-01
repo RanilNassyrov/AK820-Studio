@@ -258,40 +258,47 @@ def quote_card(seed, clock=False, now=None):
     return [(im, 500)]
 
 
-def load_image(path, max_frames=None):
-    """Frames of an image or GIF. Each frame costs ~1.1 s of upload, so a long GIF can be thinned
-    to max_frames: frames are dropped evenly and their time goes to the frames kept, so the
-    animation keeps its speed."""
+def load_image(path, max_frames=None, ceiling=None):
+    """Frames of an image or GIF. Each frame costs upload time, so a long GIF can be thinned to
+    max_frames: frames are dropped evenly and their time goes to the frames kept, so the animation
+    keeps its speed. ceiling is what the target holds, the stock screen's if not given."""
     from PIL import ImageSequence
     from .keyboard import MAX_FRAMES
     im = Image.open(path)
     # the iterator yields the same object seeked to each frame, so convert every frame while
     # iterating; collecting the iterator first would give N copies of the last frame
-    frames = [(ImageOps.fit(fr.convert("RGB"), (S, S)), fr.info.get("duration", 100) or 100)
+    # a delay of 0 or 10 ms means "no delay set": browsers show those at 100 ms, so we do too
+    frames = [(ImageOps.fit(fr.convert("RGB"), (S, S)), d if (d := fr.info.get("duration", 0)) > 10 else 100)
               for fr in ImageSequence.Iterator(im)]
-    limit = min(max_frames or MAX_FRAMES, MAX_FRAMES)
+    limit = min(max_frames or MAX_FRAMES, ceiling or MAX_FRAMES)
     if len(frames) <= limit:
         return frames
     edges = [i * len(frames) // limit for i in range(limit + 1)]
     return [(frames[a][0], sum(ms for _, ms in frames[a:b])) for a, b in zip(edges, edges[1:])]
 
 
-def animation_blob(frames, frame_ms):
-    """Frames as the firmware's animation slot: frame count, padding to 0x100, then RGB565. It plays
-    at a fixed speed, so frames are picked by time to keep the original tempo."""
+def animation_blob(frames, ceiling):
+    """Frames as the firmware's animation slot: frame count, each frame's time in 2 ms units, padding
+    to 0x100, then RGB565. The panel takes 20 ms a frame at best, so a shorter frame gives its time
+    to the one before it, and a pause too long for one byte takes extra frames."""
     from .keyboard import rgb565
-    total = sum(ms for _, ms in frames)
-    count = max(1, min(255, round(total / frame_ms)))
-    picked, at, i = [], 0, 0
-    for n in range(count):
-        target = n * total / count
-        while i < len(frames) - 1 and at + frames[i][1] <= target:
-            at += frames[i][1]
-            i += 1
-        picked.append(frames[i][0])
+    shown = []
+    for im, ms in frames:
+        if shown and shown[-1][1] < 20:
+            shown[-1] = shown[-1][0], shown[-1][1] + ms
+        else:
+            shown.append((im, ms))
+    timed = []
+    for im, ms in shown:
+        while ms > 510:
+            timed.append((im, 510))
+            ms -= 510
+        timed.append((im, max(20, ms)))
+    timed = timed[:ceiling]
     head = bytearray(256)
-    head[0] = len(picked)
-    return bytes(head) + b"".join(rgb565(im) for im in picked), picked
+    head[0] = len(timed)
+    head[1:1 + len(timed)] = bytes(ms // 2 for _, ms in timed)
+    return bytes(head) + b"".join(rgb565(im) for im, _ in timed), timed
 
 
 def matrix(n=12):

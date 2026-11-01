@@ -1,33 +1,210 @@
+diff --git a/drivers/led/sn32f2xx.c b/drivers/led/sn32f2xx.c
+index 882334ff..c62faa0c 100644
+--- a/drivers/led/sn32f2xx.c
++++ b/drivers/led/sn32f2xx.c
+@@ -1056,6 +1056,12 @@ void sn32f2xx_set_color_all(uint8_t r, uint8_t g, uint8_t b) {
+     }
+ }
+ 
++void sn32f2xx_get_color(int index, uint8_t *rgb) {
++    rgb[0] = led_state_buf[index].r;
++    rgb[1] = led_state_buf[index].g;
++    rgb[2] = led_state_buf[index].b;
++}
++
+ uint32_t sn32f2xx_led_load(void) {
+     uint32_t sum = 0;
+     for (int i = 0; i < SN32F2XX_LED_COUNT; i++) {
+diff --git a/drivers/led/sn32f2xx.h b/drivers/led/sn32f2xx.h
+index bd4fb48e..756e382a 100644
+--- a/drivers/led/sn32f2xx.h
++++ b/drivers/led/sn32f2xx.h
+@@ -127,6 +127,9 @@ extern volatile bool sn32f2xx_pgm_scan;
+  * Takes effect as the next frame renders. Main-thread only. */
+ void sn32f2xx_set_power_scale(uint8_t scale);
+ 
++/* What LED `index` is set to now, as r, g, b: for a board that shows it elsewhere. */
++void sn32f2xx_get_color(int index, uint8_t *rgb);
++
+ /* Turn every LED output off and leave it off. Call before stopping the row
+  * ISR, or the mux freezes with one row/channel driving at full duty. */
+ void sn32f2xx_blank(void);
 diff --git a/keyboards/a_jazz/ak820pro/ak820pro.c b/keyboards/a_jazz/ak820pro/ak820pro.c
-index d246df90..56cdb153 100644
+index d246df90..d527a57b 100644
 --- a/keyboards/a_jazz/ak820pro/ak820pro.c
 +++ b/keyboards/a_jazz/ak820pro/ak820pro.c
-@@ -593,6 +593,7 @@ static void blit_stat_task(void) {
+@@ -593,6 +593,8 @@ static void blit_stat_task(void) {
  void housekeeping_task_kb(void) {
      WDT_SCOPE(WDT_SITE_HOUSEKEEPING);
      health_loop_tick();    // worst-gap max-hold; one timer read per pass
 +    host_colors_housekeeping();   // back to the saved effect when the host goes quiet
++    key_palette_housekeeping();   // the keys' own colors, to and from external flash
      menu_pass_begin();     // C10's pass timing, at the same boundary
  #ifdef LOOPGAP_INSTRUMENT
      loop_gap_task();
+@@ -617,6 +619,8 @@ void housekeeping_task_kb(void) {
+      * which is why display_housekeeping_task() may gate on that flag: keep this
+      * call OUT of that function (see the gate's comment in display.c). */
+     WDT_CALL(WDT_SITE_DISPLAY_PUMP, ACCT(ACCT_PUMP, display_blit_pump()));
++    /* Every pass: each animation frame has its own duration, down to 20 ms. */
++    WDT_CALL(WDT_SITE_LOOP_BASE + LOOP_SITE_ANIM, ACCT(ACCT_ANIM, anim_task()));
+ #ifdef CONSOLE_ENABLE
+     blit_stat_task();
+ #endif
+@@ -646,7 +650,6 @@ void housekeeping_task_kb(void) {
+ #endif
+ 
+         if (!anim_active()) LOOP_SITE(LOOP_SITE_RTCTASK, ACCT(ACCT_RTC, rtc_task()));   // RTC I2C (port A) glitches the flash SPI1 pins (A12/A13) mid-DMA
+-        LOOP_SITE(LOOP_SITE_ANIM, ACCT(ACCT_ANIM, anim_task()));                   // one animation frame per 100 ms
+         WDT_CALL(WDT_SITE_DISPLAY_HK, ACCT(ACCT_DISP_HK, display_housekeeping_task()));   // its sub-draws are sited individually
+         LOOP_SITE(LOOP_SITE_EECFG,  ACCT(ACCT_EECFG, kb_eeconfig_task()));          // settled, coalesced kb-config flush
+         prof_tick();                                                                // an HC_PROFILES restore's 5 s timeout
 diff --git a/keyboards/a_jazz/ak820pro/ak820pro.h b/keyboards/a_jazz/ak820pro/ak820pro.h
-index 9b180d49..c647709f 100644
+index 9b180d49..39fde3ea 100644
 --- a/keyboards/a_jazz/ak820pro/ak820pro.h
 +++ b/keyboards/a_jazz/ak820pro/ak820pro.h
-@@ -11,6 +11,8 @@
+@@ -11,6 +11,9 @@
   * (1<<1)|(1<<3) -- a silent-corruption coupling if layers were ever
   * rearranged. The mac/win dip switch selects the base layer, so per-key
   * remaps usually need doing on both bases. */
 +void host_colors_housekeeping(void);   // hid_protocol.c
++void key_palette_housekeeping(void);   // hid_protocol.c
 +
  enum ak820pro_layers {
      WINBASE = 0,
      WINFN,
+diff --git a/keyboards/a_jazz/ak820pro/battery.c b/keyboards/a_jazz/ak820pro/battery.c
+index 696b786f..3c48c35b 100644
+--- a/keyboards/a_jazz/ak820pro/battery.c
++++ b/keyboards/a_jazz/ak820pro/battery.c
+@@ -579,10 +579,12 @@ uint16_t battery_led_pm(void) { return led_pm; }
+ #define P_BASE_UW        106900u
+ #define P_USB_UW           7100u
+ #define P_BKL_FULL_UW     39100u
++/* The B's scaled by 2.76 from the 10-19 map: the lit window went from 17.1%
++ * to 47.2% of a slot (SN32F2XX_RGB_PWM_FREQ, config.h). Calculated, not measured. */
+ #define P_RGB_A_UW         8640u
+-#define P_RGB_R_NW         3681u   /* nW per unit of the red channels' sum (81 channels) */
+-#define P_RGB_G_NW         2565u   /* ... green */
+-#define P_RGB_B_NW         2322u   /* ... blue */
++#define P_RGB_R_NW        10160u   /* nW per unit of the red channels' sum (81 channels) */
++#define P_RGB_G_NW         7079u   /* ... green */
++#define P_RGB_B_NW         6409u   /* ... blue */
+ #define BKL_DUTY_FULL        48u
+ /* The capacity: R3's 15,579 mWh from FULL to the RGB cut, at JD's settings
+  * (history/battery-2026-10-15-drain-2f/, "A1/A2"). One pm is a thousandth:
+diff --git a/keyboards/a_jazz/ak820pro/config.h b/keyboards/a_jazz/ak820pro/config.h
+index 55ef95b2..6aa6f5dc 100644
+--- a/keyboards/a_jazz/ak820pro/config.h
++++ b/keyboards/a_jazz/ak820pro/config.h
+@@ -109,6 +109,13 @@
+ // by hand. Keep RGB_MATRIX_DEFAULT_VAL in keyboard.json scaled to the ceiling
+ // (64/255 ~= the same 25% output as the old 32/128).
+ #define RGB_MATRIX_MAXIMUM_BRIGHTNESS 255
++/* Our REACTIVE and RIPPLE read QMK's hit tracker, which only its own reactive
++ * effects switch on. Heatmap: one press is already bright, typing reaches red. */
++#define RGB_MATRIX_KEYPRESSES
++#define RGB_MATRIX_TYPING_HEATMAP_INCREASE_STEP 96
++#define RGB_MATRIX_TYPING_HEATMAP_SPREAD 50
++#define RGB_MATRIX_TYPING_HEATMAP_AREA_LIMIT 32
++#define RGB_MATRIX_TYPING_HEATMAP_DECREASE_DELAY_MS 15
+ /* ⚠️ THE STEP SIZES NO LONGER AFFECT THE FIELD RATE. Read this before tuning.
+  *
+  * The SonixQMK driver derived the LED PWM clock from the PRODUCT of the four UI
+@@ -124,7 +131,14 @@
+  * The old coupling is why the notes above talk about "spending" one step to buy
+  * another. That reasoning is now obsolete; it is kept for the history because
+  * the rebalance table explains where the constants came from. */
+-#define SN32F2XX_RGB_PWM_FREQ 4800000
++/* AK820 Studio: 1.2 MHz, a quarter of the 4.8 MHz above, for four times the
++ * lit window. The row ISR re-arms the counter at its END, so a slot is the ISR
++ * (239 us measured) plus one PWM period, and only that period lights anything:
++ * at 4.8 MHz that was 53 us of 312, the LEDs lit at most 17% of their slots
++ * while 77% of the CPU sat in the ISR. At 1.2 MHz it is 213 us of 452: 47% lit
++ * (2.8x the light), half the CPU back for the main loop, a field of ~123 Hz
++ * (the 121 Hz this driver stocks at) and each key read every ~8 ms. */
++#define SN32F2XX_RGB_PWM_FREQ 1200000
+ 
+ /* 256 values, 1.4 deg -- the FINEST POSSIBLE. Hue is an 8-bit value in QMK, so
+  * 256 steps over 360 deg is the hardware floor; true single-degree steps would
+diff --git a/keyboards/a_jazz/ak820pro/graphics/lcd_bus.c b/keyboards/a_jazz/ak820pro/graphics/lcd_bus.c
+index 7edb06f6..7e35166f 100644
+--- a/keyboards/a_jazz/ak820pro/graphics/lcd_bus.c
++++ b/keyboards/a_jazz/ak820pro/graphics/lcd_bus.c
+@@ -73,14 +73,12 @@ extern void display_anim_end(void);
+ #define ANIM_ROOM   ((FLASH_ASSET_BASE - ANIM_BASE - ANIM_HDR) / ANIM_STRIDE)
+ #define ANIM_MAX    (ANIM_ROOM < 255u ? ANIM_ROOM : 255u)
+ 
+-// Playback is paced by the 10 Hz housekeeping slot -- one frame per 100 ms --
+-// which matches stock speed by observation. The header's per-frame duration
+-// bytes are deliberately IGNORED: disassembly of V1.13's player shows it never
+-// reads them either (only hdr[0], the count), and they are uniform in every
+-// stock animation we have seen (0x2D throughout Mario, 0x14 throughout the
+-// 125-frame one) -- exactly what an unread field looks like. What actually sets
+-// the stock frame rate was not identified; 100 ms is fitted to observation, not
+-// derived.
++// Each frame stays up for its own duration byte, in 2 ms units (the vendor
++// uploader's unit, and Mario's 0x2D is then the 90 ms it looks like). A full frame
++// takes ~11 ms over the 24 MHz bus, so anything from 20 ms up plays as written.
++// A zero byte means 100 ms: slots written before the player read these bytes.
++#define ANIM_UNIT_MS    2u
++#define ANIM_DEFAULT_MS 100u
+ 
+ // ---------------------------------------------------------------------------
+ // Low-level bus
+@@ -1416,14 +1414,20 @@ void lcd_blit_stats(lcd_blit_stats_t *out) {
+ static bool     anim_on  = false;
+ static uint8_t  anim_idx = 0;
+ static uint8_t  anim_count = 0;              // from the header, 0 = nothing to play
++static uint8_t  anim_hdr[ANIM_HDR];          // count, then each frame's duration
++static uint32_t anim_due = 0;                // when the next frame goes up
++
++static uint16_t anim_hold_ms(uint8_t frame) {
++    uint8_t t = anim_hdr[1 + frame];
++    return t ? t * ANIM_UNIT_MS : ANIM_DEFAULT_MS;
++}
+ 
+ // Read the slot header. Returns false if it describes nothing playable, which is
+ // the normal state for an empty or never-provisioned slot.
+ static bool anim_read_header(void) {
+-    uint8_t hdr;
+     lcd_flash_init();
+-    flash_read_bytes(ANIM_BASE, &hdr, 1);
+-    anim_count = hdr > ANIM_MAX ? 0 : hdr;
++    flash_read_bytes(ANIM_BASE, anim_hdr, sizeof anim_hdr);
++    anim_count = anim_hdr[0] > ANIM_MAX ? 0 : anim_hdr[0];
+     return anim_count != 0;
+ }
+ 
+@@ -1477,6 +1481,7 @@ void anim_toggle(void) {
+         if (!display_anim_begin()) return;
+         set_madctl(MADCTL_ANIM);            // frames authored for this orientation
+         anim_on = true; anim_idx = 0;
++        anim_due = timer_read32() + anim_hold_ms(0);
+         blit_arm(ANIM_BASE + ANIM_HDR);
+     } else {
+         anim_on = false;
+@@ -1492,9 +1497,14 @@ void anim_toggle(void) {
+         display_anim_end();                 // the panel back to the dashboard, a restore from band 1
+     }
+ }
+-// Called from the 10 Hz housekeeping slot, so one frame per 100 ms.
++// Called on every main-loop pass. The next deadline counts from the last one, so a
++// late pass doesn't slow the tempo; a stall past a whole frame just resumes from now.
+ void anim_task(void) {
+     if (!anim_on || !blit_done) return;     // previous frame still in flight
++    uint32_t now = timer_read32();
++    if ((int32_t)(now - anim_due) < 0) return;
+     anim_idx = (uint8_t)((anim_idx + 1) % anim_count);
++    uint16_t hold = anim_hold_ms(anim_idx);
++    anim_due = now - anim_due > hold ? now + hold : anim_due + hold;
+     blit_arm(ANIM_BASE + ANIM_HDR + (uint32_t)anim_idx * ANIM_STRIDE);
+ }
 diff --git a/keyboards/a_jazz/ak820pro/hid_protocol.c b/keyboards/a_jazz/ak820pro/hid_protocol.c
-index 9b2af0a1..eb23955f 100644
+index 9b2af0a1..b7d43ab5 100644
 --- a/keyboards/a_jazz/ak820pro/hid_protocol.c
 +++ b/keyboards/a_jazz/ak820pro/hid_protocol.c
-@@ -400,6 +400,43 @@ static bool text_command_inner(uint8_t *data, uint8_t length) {
+@@ -400,6 +400,137 @@ static bool text_command_inner(uint8_t *data, uint8_t length) {
      }
  }
  
@@ -60,18 +237,112 @@ index 9b2af0a1..eb23955f 100644
 +/* No program, no cable, or a sleeping computer: the keyboard must not stay dark
 + * or frozen, so it returns to the effect saved in its memory. The host sends a
 + * frame BEFORE it selects the effect, or this would undo the selection at once.
-+ * A saved HOST_COLORS is replaced: reloading it would only come back here. */
++ * A saved HOST_COLORS is replaced: reloading it would only come back here.
++ * Long past the 2 s, no frames were coming at all: the Fn key stepped in from
++ * the last effect, and this is the last mode, so the step wraps to the first. */
 +void host_colors_housekeeping(void) {
 +    if (rgb_matrix_get_mode() != RGB_MATRIX_CUSTOM_HOST_COLORS) return;
-+    if (timer_elapsed32(host_colors_at) < 2000) return;
++    uint32_t quiet = timer_elapsed32(host_colors_at);
++    if (quiet < 2000) return;
++    if (quiet >= 2500) {
++        rgb_matrix_mode(RGB_MATRIX_SOLID_COLOR);
++        return;
++    }
 +    rgb_matrix_reload_from_eeprom();
 +    if (rgb_matrix_get_mode() == RGB_MATRIX_CUSTOM_HOST_COLORS) rgb_matrix_mode_noeeprom(RGB_MATRIX_CYCLE_ALL);
 +}
 +
++// ---------------------------------------------------------------------------
++// Key colors channel: the keys' real colors for the program's picture, and the
++// KEY_COLORS effect's palette, which stays on the keyboard for wireless use.
++//   [SET_VALUE, KEY_COLORS_CHANNEL, KC_LED_READ, first] -> [.., .., .., first, 9 LEDs]
++//   [SET_VALUE, KEY_COLORS_CHANNEL, KC_PAL_SET, first, count, r, g, b, ...]
++//   [SET_VALUE, KEY_COLORS_CHANNEL, KC_PAL_SAVE] -> data[3]: 1 while a GIF plays
++// The palette lives in one external-flash sector of our own region. It is too
++// big for the emulated EEPROM, whose writes also blink the LEDs. A save erases
++// and programs in steps from housekeeping, so it never stalls a key scan, and a
++// playing GIF, which owns that bus, only delays it.
++enum {
++    KEY_COLORS_CHANNEL = 0x15,
++    KC_LED_READ = 1, KC_PAL_SET = 2, KC_PAL_SAVE = 3,
++    KC_PER_PACKET = 9,
++};
++#define KEY_PALETTE_ADDR 0xFF0000u
++static const uint8_t key_palette_magic[4] = {'A', 'K', 'P', '1'};
++
++uint8_t         key_palette[RGB_MATRIX_LED_COUNT][3];
++static bool     key_palette_ready = false;
++static uint8_t  key_palette_step  = 0;   /* 0 idle, then erase, palette, magic: the magic last, so a cut save reads as none */
++
++static inline bool is_key_colors_cmd(const uint8_t *data, uint8_t length) {
++    return length >= 4 && data[0] == RTC_SET_VALUE && data[1] == KEY_COLORS_CHANNEL;
++}
++
++static void key_colors_command(uint8_t *data, uint8_t length) {
++    uint8_t first = data[3];
++    switch (data[2]) {
++        case KC_LED_READ:
++            if (first >= RGB_MATRIX_LED_COUNT) break;
++            for (uint8_t i = 0; i < KC_PER_PACKET && first + i < RGB_MATRIX_LED_COUNT; i++) {
++                sn32f2xx_get_color(first + i, &data[4 + i * 3]);
++            }
++            return;
++        case KC_PAL_SET: {
++            uint8_t count = data[4];
++            if (count == 0 || count > KC_PER_PACKET || (uint16_t)first + count > RGB_MATRIX_LED_COUNT ||
++                length < (uint16_t)5 + (uint16_t)count * 3) {
++                break;
++            }
++            memcpy(key_palette[first], &data[5], (uint16_t)count * 3);
++            key_palette_ready = true;
++            return;
++        }
++        case KC_PAL_SAVE:
++            key_palette_step = 1;
++            data[3]          = anim_active() ? 1 : 0;
++            return;
++    }
++    data[0] = RTC_UNHANDLED;
++}
++
++static void key_palette_load(void) {
++    uint8_t magic[sizeof key_palette_magic];
++    flash_read_bytes(KEY_PALETTE_ADDR, magic, sizeof magic);
++    if (memcmp(magic, key_palette_magic, sizeof magic) == 0) {
++        flash_read_bytes(KEY_PALETTE_ADDR + sizeof magic, &key_palette[0][0], sizeof key_palette);
++        return;
++    }
++    for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; i++) {   /* nothing saved yet: letters and modifiers apart */
++        bool mod          = HAS_FLAGS(g_led_config.flags[i], LED_FLAG_MODIFIER);
++        key_palette[i][0] = mod ? 170 : 0;
++        key_palette[i][1] = mod ? 0 : 220;
++        key_palette[i][2] = 255;
++    }
++}
++
++void key_palette_housekeeping(void) {
++    if (!key_palette_ready) {
++        /* After boot, once the display owns a ready bus. */
++        if (timer_read32() < 1000 || anim_active()) return;
++        key_palette_load();
++        key_palette_ready = true;
++        return;
++    }
++    if (!key_palette_step || anim_active() || flash_busy()) return;
++    if (key_palette_step == 1) {
++        if (flash_erase_sector(KEY_PALETTE_ADDR)) key_palette_step = 2;
++    } else if (key_palette_step == 2) {
++        if (flash_page_program(KEY_PALETTE_ADDR + sizeof key_palette_magic, &key_palette[0][0], sizeof key_palette)) key_palette_step = 3;
++    } else if (flash_page_program(KEY_PALETTE_ADDR, key_palette_magic, sizeof key_palette_magic)) {
++        key_palette_step = 0;
++    }
++}
++_Static_assert(sizeof key_palette + sizeof key_palette_magic <= 256, "the palette must fit one flash page");
++
  // ---------------------------------------------------------------------------
  // Health channel: read the unified health counters over raw HID (health.c).
  // Same VIA custom-value framing as the channels above:
-@@ -1444,6 +1481,10 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
+@@ -1444,6 +1575,14 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
          text_command(data, length);
          return;
      }
@@ -79,18 +350,37 @@ index 9b2af0a1..eb23955f 100644
 +        host_colors_command(data, length);
 +        return;
 +    }
++    if (is_key_colors_cmd(data, length)) {
++        key_colors_command(data, length);
++        return;
++    }
      if (is_health_cmd(data, length)) {
          health_command(data, length);
          return;
-@@ -1465,6 +1506,8 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
+@@ -1465,6 +1604,10 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
          flash_command(data, length);
      } else if (is_text_cmd(data, length)) {
          text_command(data, length);
 +    } else if (is_host_colors_cmd(data, length)) {
 +        host_colors_command(data, length);
++    } else if (is_key_colors_cmd(data, length)) {
++        key_colors_command(data, length);
      } else if (is_health_cmd(data, length)) {
          health_command(data, length);
      } else {
+diff --git a/keyboards/a_jazz/ak820pro/keyboard.json b/keyboards/a_jazz/ak820pro/keyboard.json
+index 2d510837..39354d42 100644
+--- a/keyboards/a_jazz/ak820pro/keyboard.json
++++ b/keyboards/a_jazz/ak820pro/keyboard.json
+@@ -49,7 +49,7 @@
+             "jellybean_raindrops": true,
+             "typing_heatmap": true
+         },
+-        "default": { "animation": "solid_color", "hue": 36, "sat": 64, "val": 191, "speed": 102 },
++        "default": { "animation": "cycle_left_right", "hue": 130, "sat": 255, "val": 255, "speed": 128 },
+         "layout": [
+             { "flags": 5, "matrix": [0, 0], "x": 7, "y": 5 },
+             { "flags": 5, "matrix": [0, 1], "x": 24, "y": 5 },
 diff --git a/keyboards/a_jazz/ak820pro/keymaps/via/keymap.c b/keyboards/a_jazz/ak820pro/keymaps/via/keymap.c
 index ce5e3345..847a5c18 100644
 --- a/keyboards/a_jazz/ak820pro/keymaps/via/keymap.c
@@ -123,26 +413,729 @@ index ce5e3345..847a5c18 100644
          KC_LSFT,    KC_Z,       KC_X,       KC_C,       KC_V,       KC_B,       KC_N,       KC_M,       KC_COMM,    KC_DOT,     KC_SLSH,    KC_RSFT,    KC_UP,
          KC_LCTL,    KC_LALT,    KC_LGUI,    KC_SPC,     KC_RGUI,    MO(MACFN),  KC_RALT,    KC_LEFT,    KC_DOWN,    KC_RGHT
      ),
+diff --git a/keyboards/a_jazz/ak820pro/menu/menu.c b/keyboards/a_jazz/ak820pro/menu/menu.c
+index d8eae689..d9699d94 100644
+--- a/keyboards/a_jazz/ak820pro/menu/menu.c
++++ b/keyboards/a_jazz/ak820pro/menu/menu.c
+@@ -68,10 +68,14 @@ static bool is_pslot(uint8_t node) { return node == N_PSLOT; }
+  * 10-28: Font under Bootloader; and About into Diagnostics as System info
+  * (JD: "possibly the lowest value item ... more like a 'System Status'
+  * page"), so fourteen rows: Large's two pages of seven, Small's eight and
+- * six. */
+-static const uint8_t top_rows[]   = {N_LIGHT, N_SCREEN, N_CONN,     N_POWER, N_IND,  N_CLOCK, N_BATT,
+-                                     N_PROFILES, N_BOOT, N_FONT, N_DEFAULTS, N_DIAG, N_HELP, N_EXIT};
+-static const uint8_t light_rows[] = {N_BACK, N_EFFECT, N_BRIGHT, N_HUE, N_SAT, N_SPEED, N_LIGHTS};
++ * six.
++ * AK820 Studio: laid out as the stock firmware's menu, what you change daily
++ * on the first page: effect, colour, brightness, speed, then the clock and the
++ * battery. The rest moved under More, which is N_LIGHT's node and list: the
++ * tree has no node left (N_COUNT). */
++static const uint8_t top_rows[]   = {N_EFFECT, N_HUE, N_SAT, N_BRIGHT, N_SPEED, N_LIGHTS, N_CLOCK,
++                                     N_BATT, N_SCREEN, N_CONN, N_LIGHT, N_EXIT};
++static const uint8_t light_rows[] = {N_BACK, N_POWER, N_IND, N_PROFILES, N_FONT, N_DEFAULTS, N_BOOT, N_DIAG, N_HELP};
+ static const uint8_t ind_rows[]   = {N_BACK, N_LOCKS, N_CHGL};
+ static const uint8_t conn_rows[]  = {N_BACK, N_BT0, N_BT1, N_BT2, N_PAIRNOW};   /* P3: on BT */
+ /* 10-27 (JD: "add a dev-only option in the menu that lets you do a write
+@@ -255,6 +259,8 @@ static const char *label_of(uint8_t node) {
+         switch (node) {
+             case N_RESET:    return "Reset counts";
+             case N_EFFECT:   return "FX";
++            case N_BRIGHT:   return "Bright";   /* the icon and "100%" leave it 8 */
++            case N_SAT:      return "Satur.";
+             case N_DEFAULTS: return "Defaults";
+             case N_CONN:     return "Link";
+             case N_LOCKS:    return "Lock LEDs";
+@@ -262,7 +268,7 @@ static const char *label_of(uint8_t node) {
+             case N_BV0:      return "%";       /* as the top level's value: "Percent" and "18% <1h" don't fit 13 */
+             case N_BV1:      return "Hours";
+             case N_SPEED:
+-                if (two_tone()) return "2nd color";
++                if (two_tone()) return "2nd col";
+                 break;
+             default: break;
+         }
+@@ -279,11 +285,11 @@ static const char *label_of(uint8_t node) {
+         case N_HEALTH: return "Health page";
+         case N_RESET:  return "Reset counters";
+         case N_BACK:   return MT_TRI_L " Back";   /* JD, 10-24: ◀ for ‹ */
+-        case N_LIGHT:  return "Lighting";
++        case N_LIGHT:  return "More";
+         case N_SCREEN: return "Screen";
+         case N_EFFECT: return "Effect";
+         case N_BRIGHT: return "Brightness";
+-        case N_HUE:    return "Hue";
++        case N_HUE:    return "Color";
+         case N_SAT:    return "Saturation";
+         case N_SPEED:  return two_tone() ? "Second color" : "Speed";   /* Alphas/Mods' speed is its second colour */
+         case N_LIGHTS: return "Lights";
+@@ -325,7 +331,13 @@ static const char *icon_of(uint8_t node) {
+         case N_HELP:  return MT_I_HELP;
+ 
+         case N_EXIT:  return MT_I_EXIT " ";
+-        case N_LIGHT: return MT_I_LIGHT " ";   /* P1b */
++        case N_LIGHT: return MT_I_DIAG " ";
++        case N_EFFECT:
++        case N_HUE:
++        case N_SAT:
++        case N_SPEED:
++        case N_LIGHTS: return MT_I_LIGHT " ";   /* P1b */
++        case N_BRIGHT: return MT_I_IND;
+         case N_SCREEN: return MT_I_SCREEN;
+         case N_BOOT:  return MT_I_BOOT;
+         case N_DEFAULTS: return MT_I_RESET " ";   /* 10-27: the circle arrow (JD: "arrow-rotate-left") */
+@@ -352,7 +364,7 @@ uint16_t menu_color(uint8_t i) { return i < MP_N ? pal[i] : 0; }
+ /* --- State ------------------------------------------------------------------ */
+ 
+ typedef struct { uint8_t node, cursor, top; } frame_t;
+-static frame_t  stack[4];   /* P5b: the top level, Profiles, a slot's page, its confirm */
++static frame_t  stack[5];   /* P5b: the top level, More, Profiles, a slot's page, its confirm */
+ static uint8_t  depth;
+ static uint8_t  model_power, model_clock;   /* the latched model (external changes: Fn+B, Fn+C) */
+ static uint8_t  title_id;                   /* the latched title: a screen's, a flash's or the hint */
+@@ -667,7 +679,7 @@ static const char *title_text(uint8_t id) {
+         }
+     }
+     switch (id) {
+-        case T_TOP:        return "Configuration";
++        case T_TOP:        return "Menu";
+         case T_POWER:      return "Power";
+         case T_CLOCK:      return "Clock";
+         case T_DIAG:       return "Diagnostics";
+@@ -679,11 +691,11 @@ static const char *title_text(uint8_t id) {
+         case T_RESET_DONE: return "Counters reset";
+         case T_HINT:       return "Turn + Click Knob";
+         case T_HINT_BACK:  return "Hold to Go Back";   /* JD, 10-24: the hold isn't obvious */
+-        case T_LIGHT:      return "Lighting";
++        case T_LIGHT:      return "More";
+         case T_SCREEN:     return "Screen";
+         case T_EFFECT:     return "Effect";
+         case T_BRIGHT:     return "Brightness";
+-        case T_HUE:        return "Hue";
++        case T_HUE:        return "Color";
+         case T_SAT:        return "Saturation";
+         case T_SPEED:      return "Speed";
+         case T_SECOND:     return "Second color";
+@@ -757,7 +769,8 @@ static const char *title_icon(uint8_t id) {
+         case T_PAIRING: return icon_of(N_CONN);
+         case T_BATT:   return icon_of(N_BATT);
+         case T_FONT:   return icon_of(N_FONT);
+-        default:       return id >= T_LIGHT && id <= T_LIGHTS        ? icon_of(N_LIGHT)
++        case T_LIGHT:  return icon_of(N_LIGHT);
++        default:       return id >= T_LIGHT && id <= T_LIGHTS        ? icon_of(N_EFFECT)
+                             : (id >= T_PROFILES && id <= T_PDELETE) || id == T_PRENAME ? icon_of(N_PROFILES)   /* P5b */
+                                                                    : "";
+     }
+@@ -1202,7 +1215,7 @@ static void prof_summary(uint8_t slot, uint8_t line, char *out) {
+         if (n > COLS - at - vn - 1u) n = COLS - at - vn - 1u;
+         memcpy(out + at, name, n);
+     } else if (line == 1u) {
+-        memcpy(out, icon_of(N_LIGHT), 2);
++        memcpy(out, icon_of(N_EFFECT), 2);
+         if (!(rec[PR_FIELDS] & PF_LIGHTING)) return;
+         snprintf(b, sizeof b, "H:%u S:%u%% B:%u%%", (unsigned)((rec[PR_HUE] * 360u) / 256u),
+                  (unsigned)((rec[PR_SAT] * 100u + 127u) / 255u), (unsigned)((rec[PR_VAL] * 100u + 127u) / 255u));
+@@ -2218,7 +2231,7 @@ static bool sync_model(void);
+ static uint32_t last_idle;   /* menu_tick's latest idle time, for retitle() between ticks */
+ 
+ static void push(uint8_t node, uint8_t cursor) {
+-    if (depth >= sizeof stack / sizeof stack[0]) return;   /* four deep at most: P5b's confirms */
++    if (depth >= sizeof stack / sizeof stack[0]) return;   /* five deep at most: P5b's confirms, under More */
+     stack[depth++] = (frame_t){node, cursor, (uint8_t)(cursor / ROWS * ROWS)};
+ }
+ static void flash(uint8_t id, uint32_t now) {
+@@ -2254,7 +2267,8 @@ void menu_return_from_diag(uint32_t now) {
+     model_pf     = env_bt_pair_facts();
+     (void)me_take_pending();
+     pv = PV_LIVE;
+-    push(N_TOP, row_index(N_TOP, N_DIAG));   /* Diagnostics' row, wherever it is */
++    push(N_TOP, row_index(N_TOP, N_LIGHT));   /* Diagnostics' row, wherever it is */
++    push(N_LIGHT, row_index(N_LIGHT, N_DIAG));
+     push(N_DIAG, DIAG_ROW_HEALTH);
+     title_id = T_DIAG;
+     retitle(now);
+@@ -2946,11 +2960,11 @@ void menu_tick(uint32_t now, uint32_t idle_ms) {
+     /* P3: the Connection screens follow the slider. Its BT screens off BT, or
+      * the off-BT page on BT: back to the top level, the cursor on Connection,
+      * whose value shows the new link. P5b: a host restore pops the profile
+-     * pages the same way, the cursor on Profiles (their writes would be
++     * pages the same way, the cursor on More (their writes would be
+      * refused). */
+     uint8_t n = cur()->node, row = N_NONE;
+     if ((is_bt_screen(n) && !on_bt()) || (n == N_CONNINFO && on_bt())) row = N_CONN;
+-    else if (is_prof_screen(n) && prof_restore_open()) row = N_PROFILES;
++    else if (is_prof_screen(n) && prof_restore_open()) row = N_LIGHT;   /* More, which holds Profiles */
+     if (row != N_NONE) {
+         pv_show(PV_LIVE);   /* P5e: a restore's pop, out of Profiles */
+         depth           = 1;
+diff --git a/keyboards/a_jazz/ak820pro/power.c b/keyboards/a_jazz/ak820pro/power.c
+index 2b81336d..4653adcf 100644
+--- a/keyboards/a_jazz/ak820pro/power.c
++++ b/keyboards/a_jazz/ak820pro/power.c
+@@ -31,6 +31,7 @@
+ #include <stdio.h>
+ #include "quantum.h"
+ #include "power.h"
++#include "rgb_effects.h"
+ #include "battery.h"
+ #include "kb_eeconfig.h"
+ #include "graphics/display.h"
+@@ -161,6 +162,7 @@ static void apply(void) {
+  * (rgb_matrix_kb.inc). */
+ rgb_t rgb_matrix_hsv_to_rgb(hsv_t hsv) {
+     if (hsv.v > val_cap) hsv.v = val_cap;
++    if (rgb_effect_vivid(rgb_matrix_get_mode())) hsv.s = 255;
+     return hsv_to_rgb(hsv);
+ }
+ 
 diff --git a/keyboards/a_jazz/ak820pro/rgb_effects.c b/keyboards/a_jazz/ak820pro/rgb_effects.c
-index bd644c60..9a74c6c9 100644
+index bd644c60..abe4fea6 100644
 --- a/keyboards/a_jazz/ak820pro/rgb_effects.c
 +++ b/keyboards/a_jazz/ak820pro/rgb_effects.c
-@@ -53,6 +53,7 @@ const rgb_effect_t rgb_effects[] = {
+@@ -23,9 +23,6 @@ const rgb_effect_t rgb_effects[] = {
+ #ifdef ENABLE_RGB_MATRIX_SOLID_COLOR
+     {RGB_MATRIX_SOLID_COLOR, 1, "Solid"},
+ #endif
+-#ifdef ENABLE_RGB_MATRIX_ALPHAS_MODS
+-    {RGB_MATRIX_ALPHAS_MODS, 2, "Alphas/Mods"},
+-#endif
+ #ifdef ENABLE_RGB_MATRIX_BREATHING
+     {RGB_MATRIX_BREATHING, 3, "Breathing"},
+ #endif
+@@ -45,20 +42,37 @@ const rgb_effect_t rgb_effects[] = {
+     {RGB_MATRIX_CYCLE_PINWHEEL, 8, "Pinwheel"},
+ #endif
+ #ifdef ENABLE_RGB_MATRIX_JELLYBEAN_RAINDROPS
+-    {RGB_MATRIX_JELLYBEAN_RAINDROPS, 9, "Jellybean"},
++    {RGB_MATRIX_JELLYBEAN_RAINDROPS, 9, "Drops"},
+ #endif
+ #ifdef ENABLE_RGB_MATRIX_TYPING_HEATMAP
+     {RGB_MATRIX_TYPING_HEATMAP, 10, "Heatmap"},
+ #endif
  #if defined(RGB_MATRIX_CUSTOM_KB)
-     {RGB_MATRIX_CUSTOM_RAINFALL, 11, "Rainfall"},
-     {RGB_MATRIX_CUSTOM_DRIFT, 12, "Drift"},
-+    {RGB_MATRIX_CUSTOM_HOST_COLORS, 13, "Host"},
+-    {RGB_MATRIX_CUSTOM_RAINFALL, 11, "Rainfall"},
+-    {RGB_MATRIX_CUSTOM_DRIFT, 12, "Drift"},
++    {RGB_MATRIX_CUSTOM_RAINFALL, 11, "Rain"},
++    {RGB_MATRIX_CUSTOM_DRIFT, 12, "Aurora"},
++    {RGB_MATRIX_CUSTOM_BREATHE, 14, "Breathe"},
++    {RGB_MATRIX_CUSTOM_KEY_COLORS, 15, "My colors"},
++    {RGB_MATRIX_CUSTOM_REACTIVE, 16, "Reactive"},
++    {RGB_MATRIX_CUSTOM_RIPPLE, 17, "Ripple"},
++    {RGB_MATRIX_CUSTOM_CODE_RAIN, 18, "Code rain"},
++    {RGB_MATRIX_CUSTOM_FIRE, 19, "Fire"},
++    {RGB_MATRIX_CUSTOM_SPIRAL, 20, "Spiral"},
  #endif
  };
  const uint8_t rgb_effects_n = sizeof rgb_effects / sizeof rgb_effects[0];
++/* Not in the table, and so not in the menu, whose list holds 15 (4 bits of a
++ * row's signature): Alphas/Mods, which KEY_COLORS replaces, and the computer's
++ * own mode, ids 2 and 13. Both can still be running, and the readout names them. */
++_Static_assert(sizeof rgb_effects / sizeof rgb_effects[0] <= 15, "the menu lists 15 effects at most");
+ 
+ const char *rgb_effect_name(uint8_t mode) {
+     if (mode == RGB_MATRIX_NONE) return "Off";
++#ifdef ENABLE_RGB_MATRIX_ALPHAS_MODS
++    if (mode == RGB_MATRIX_ALPHAS_MODS) return "Alphas/Mods";
++#endif
++#if defined(RGB_MATRIX_CUSTOM_KB)
++    if (mode == RGB_MATRIX_CUSTOM_HOST_COLORS) return "PC colors";
++#endif
+     for (uint8_t i = 0; i < rgb_effects_n; i++)
+         if (rgb_effects[i].mode == mode) return rgb_effects[i].name;
+     return NULL;
+@@ -86,6 +100,36 @@ uint8_t rgb_matrix_runner_i_time(void) {
+     }
+ }
+ 
++/* power.c forces these to full saturation. Their colours are their own, so a
++ * pale colour chosen for Solid must not wash them out. */
++bool rgb_effect_vivid(uint8_t mode) {
++    switch (mode) {
++#ifdef ENABLE_RGB_MATRIX_CYCLE_ALL
++        case RGB_MATRIX_CYCLE_ALL:
++#endif
++#ifdef ENABLE_RGB_MATRIX_CYCLE_LEFT_RIGHT
++        case RGB_MATRIX_CYCLE_LEFT_RIGHT:
++#endif
++#ifdef ENABLE_RGB_MATRIX_CYCLE_UP_DOWN
++        case RGB_MATRIX_CYCLE_UP_DOWN:
++#endif
++#ifdef ENABLE_RGB_MATRIX_JELLYBEAN_RAINDROPS
++        case RGB_MATRIX_JELLYBEAN_RAINDROPS:
++#endif
++#ifdef ENABLE_RGB_MATRIX_TYPING_HEATMAP
++        case RGB_MATRIX_TYPING_HEATMAP:
++#endif
++#if defined(RGB_MATRIX_CUSTOM_KB)
++        case RGB_MATRIX_CUSTOM_RAINFALL:
++        case RGB_MATRIX_CUSTOM_RIPPLE:
++        case RGB_MATRIX_CUSTOM_SPIRAL:
++#endif
++            return true;
++        default:
++            return false;
++    }
++}
++
+ /* A drop each time the count moves: one a frame at most, and 30 a second
+  * against ~60 frames, so its low byte is enough. */
+ bool rgb_matrix_jellybean_drop(void) {
+diff --git a/keyboards/a_jazz/ak820pro/rgb_effects.h b/keyboards/a_jazz/ak820pro/rgb_effects.h
+index 81171caf..9a36beec 100644
+--- a/keyboards/a_jazz/ak820pro/rgb_effects.h
++++ b/keyboards/a_jazz/ak820pro/rgb_effects.h
+@@ -6,6 +6,7 @@
+ // plans/CONFIG-MENU-P1-DESIGN.md), in mode order.
+ #pragma once
+ 
++#include <stdbool.h>
+ #include <stdint.h>
+ 
+ typedef struct {
+@@ -17,4 +18,6 @@ typedef struct {
+ extern const rgb_effect_t rgb_effects[];
+ extern const uint8_t      rgb_effects_n;
+ 
++bool rgb_effect_vivid(uint8_t mode);   /* it has its own colours: full saturation, whatever the chosen colour's */
++
+ const char *rgb_effect_name(uint8_t mode);   /* "Off" for RGB_MATRIX_NONE; NULL for a mode the table doesn't list */
 diff --git a/keyboards/a_jazz/ak820pro/rgb_matrix_kb.inc b/keyboards/a_jazz/ak820pro/rgb_matrix_kb.inc
-index 013b1f40..3671374c 100644
+index 013b1f40..eb717f4b 100644
 --- a/keyboards/a_jazz/ak820pro/rgb_matrix_kb.inc
 +++ b/keyboards/a_jazz/ak820pro/rgb_matrix_kb.inc
-@@ -289,3 +289,34 @@ static bool DRIFT(effect_params_t* params) {
+@@ -1,69 +1,64 @@
+-/* RAINFALL -- a decaying twinkle.
+- *
+- * QMK's stock PIXEL_RAIN does NOT fade: it sets one LED per interval (half the
+- * time to black) and leaves every other LED lit at full until it happens to be
+- * picked again. The result is a mostly-static scatter, not rain. STARLIGHT and
+- * STARLIGHT_SMOOTH are no closer -- both keep the entire board lit, pulsing on
+- * a shared or per-LED sine.
+- *
+- * This one keeps a brightness and a hue per LED. Every frame each brightness
+- * decays; on a timer a random LED is seeded to full with a random hue. So a key
+- * flashes and falls away over about a second, and only the few most recent
+- * drops are anywhere near full.
+- *
+- * SPEED sets the DROP RATE, i.e. the density. Decay is deliberately fixed, so
+- * turning speed up adds raindrops rather than making each one shorter -- which
+- * is the knob you actually want when the effect looks too sparse or too busy.
+- *
+- * Cost: 2 bytes per LED (162 B here) and one qsub8 per LED per frame.
+- */
++/* Shared by the effects below. One effect runs at a time, and each clears this
++ * as it starts. */
++#ifdef RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++#    include "rgb_speed.h"
++
++static uint8_t fx_mem[RGB_MATRIX_LED_COUNT * 2];
++
++static inline void fx_start(effect_params_t* params) {
++    /* init stays true for every chunk of the first frame: reset once, on the
++     * first, or a drop seeded there is wiped by the next. */
++    if (params->init && params->iter == 0) memset(fx_mem, 0, sizeof(fx_mem));
++}
++
++/* The brightness knob as a drive, through the same curve and power caps as a
++ * colour. Effects fade by scaling a full-knob colour with scale8: linear in drive.
++ * Fading through hsv.v instead passes QMK's CIE curve, which takes a half-faded
++ * key to a fifth of the light, and that is why these effects looked weak. */
++static inline uint8_t fx_level(void) {
++    return rgb_matrix_hsv_to_rgb((hsv_t){0, 0, rgb_matrix_config.hsv.v}).r;
++}
++
++static inline void fx_set(uint8_t i, rgb_t c, uint8_t k) {
++    rgb_matrix_set_color(i, scale8(c.r, k), scale8(c.g, k), scale8(c.b, k));
++}
++
++#endif // RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++/* RAINFALL -- a decaying twinkle: every frame each key's light decays, and on a
++ * timer a random key flashes in a random hue, so a key lights and falls away
++ * over a second and a half. SPEED sets how many fall. Decay is fixed.
++ * WARNING: QMK calls an effect once per LED_PROCESS_LIMIT chunk, 5 chunks a
++ * frame here, so a simulation must advance on the FIRST chunk only. */
+ RGB_MATRIX_EFFECT(RAINFALL)
+ 
+ #ifdef RGB_MATRIX_CUSTOM_EFFECT_IMPLS
+ 
+-/* ~1.4 s from full to dark at the ~62 Hz effect rate (255/4 frames). Long
+- * enough to read as a fall rather than a blink. */
+-#    define RAINFALL_DECAY 4
+-
+-static uint8_t rainfall_v[RGB_MATRIX_LED_COUNT];
+-static uint8_t rainfall_h[RGB_MATRIX_LED_COUNT];
++#    define RAINFALL_DECAY 3
+ 
+ static bool RAINFALL(effect_params_t* params) {
+     static uint8_t countdown = 0;
++    uint8_t       *light = fx_mem, *hue = fx_mem + RGB_MATRIX_LED_COUNT;
+ 
+-    /* init stays true for every chunk of the first frame: reset once, on the
+-     * first, or a drop seeded there is wiped by the next (codex). */
+-    if (params->init && params->iter == 0) {
+-        memset(rainfall_v, 0, sizeof(rainfall_v));
+-        countdown = 0;
+-    }
+-
++    fx_start(params);
+     RGB_MATRIX_USE_LIMITS(led_min, led_max);
+ 
+-    /* The effect is called once per LED_PROCESS_LIMIT chunk (5 chunks per frame
+-     * here), so the simulation must advance on the FIRST chunk only -- stepping
+-     * it per chunk would decay five times a frame and quintuple the drop rate. */
+     if (params->iter == 0) {
+-        for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; i++)
+-            rainfall_v[i] = qsub8(rainfall_v[i], RAINFALL_DECAY);
+-
++        for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; i++) light[i] = qsub8(light[i], RAINFALL_DECAY);
+         if (countdown) countdown--;
+         if (!countdown) {
+-            uint8_t i     = random8_max(RGB_MATRIX_LED_COUNT);
+-            rainfall_v[i] = 255;
+-            rainfall_h[i] = random8();
+-            /* Frames between drops: 25 at speed 0 down to 1 at full. At the
+-             * default speed this leaves roughly half a dozen lit at once. */
+-            countdown = 1 + ((255 - rgb_matrix_config.speed) * 24) / 255;
++            uint8_t i = random8_max(RGB_MATRIX_LED_COUNT);
++            light[i]  = 255;
++            hue[i]    = random8();
++            countdown = 1 + ((255 - rgb_matrix_config.speed) >> 5);   /* frames between drops: 8 to 1 */
+         }
+     }
+ 
+     for (uint8_t i = led_min; i < led_max; i++) {
+         RGB_MATRIX_TEST_LED_FLAGS();
+-        hsv_t hsv = {rainfall_h[i], rgb_matrix_config.hsv.s,
+-                     scale8(rainfall_v[i], rgb_matrix_config.hsv.v)};
+-        rgb_t rgb = rgb_matrix_hsv_to_rgb(hsv);
+-        rgb_matrix_set_color(i, rgb.r, rgb.g, rgb.b);
++        hsv_t hsv = {hue[i], 255, rgb_matrix_config.hsv.v};
++        fx_set(i, rgb_matrix_hsv_to_rgb(hsv), light[i]);
+     }
+     return rgb_matrix_check_finished_leds(led_max);
+ }
+@@ -71,7 +66,7 @@ static bool RAINFALL(effect_params_t* params) {
+ #endif // RGB_MATRIX_CUSTOM_EFFECT_IMPLS
+ 
+ 
+-/* DRIFT -- a scrolling 2D value-noise field on a hand-picked colour ramp.
++/* DRIFT -- a scrolling 2D value-noise field on a colour ramp, an aurora.
+  *
+  * The noise controls POSITION ALONG A RAMP, never hue directly. Mapping a
+  * scalar onto hue is what makes every stock effect read as "RGB keyboard"; this
+@@ -90,8 +85,6 @@ RGB_MATRIX_EFFECT(DRIFT)
+ 
+ #ifdef RGB_MATRIX_CUSTOM_EFFECT_IMPLS
+ 
+-#    include "power.h"   /* power_val_cap(): the ladder's ceiling on the value knob */
+-
+ /* 16x16 so indexing is masks only. Authored here, never computed at runtime. */
+ static const uint8_t drift_noise[256] = {
+      12, 194,  70, 215, 173,  19, 198, 146, 113, 186, 146,  29,  58, 149, 221,  27,
+@@ -116,24 +109,21 @@ static const uint8_t drift_noise[256] = {
+  * act on it: rotating an RGB ramp would need an RGB->HSV conversion per stop
+  * (which QMK does not provide), while in HSV a rotation is an add.
+  *
+- * Dark indigo -> violet -> slate -> warm grey, weighted dark on purpose:
+- * understated, not demo-pop. Each stop's v carries that dark weighting;
+- * rgb_matrix_config.hsv.v scales the whole thing on top, per LED.
++ * The ramp starts at the chosen colour's hue and walks to its neighbour, from
++ * a deep glow up to full light (ours was dark on purpose, and looked unlit).
+  *
+  * NINE entries with the last duplicated so the top ramp cell needs no clamp
+  * branch. */
+ static const hsv_t drift_ramp_hsv[9] = {
+-    {168, 255,   0}, {170, 255,   7}, {173, 250,  18}, {177, 245,  36},
+-    {181, 235,  60}, {186, 215,  88}, {192, 185, 118}, {200, 150, 150},
+-    {200, 150, 150},
++    {0, 255,  50}, {4, 255,  85}, {8, 255, 125}, {14, 250, 165},
++    {20, 245, 200}, {28, 235, 230}, {36, 220, 250}, {46, 200, 255},
++    {46, 200, 255},
+ };
+ 
+ /* Derived palette, rebuilt only when hue or saturation actually changes -- the
+  * demoscene trick: keep the field, swap the palette. The per-LED path never
+- * does an HSV conversion. Built UNCAPPED (hsv_to_rgb, not the power ladder's
+- * capped rgb_matrix_hsv_to_rgb): the user's value scales the RGB after the
+- * conversion, so a cap on the stops would clip a Drift that is already under
+- * it. The ladder caps the value knob instead, below. */
++ * does an HSV conversion. Built without the CIE curve, which would darken the
++ * stops' own values: the knob scales the RGB after the conversion (fx_level). */
+ static rgb_t  drift_ramp[9];
+ static uint8_t drift_pal_h = 0, drift_pal_s = 0;
+ static bool    drift_pal_valid = false;
+@@ -147,7 +137,7 @@ static void drift_build_palette(uint8_t h, uint8_t s) {
+          * whole ramp toward grey rather than shifting it. */
+         c.h = (uint8_t)(c.h + h);
+         c.s = scale8(c.s, s);
+-        drift_ramp[i] = hsv_to_rgb(c);
++        drift_ramp[i] = hsv_to_rgb_nocie(c);
+     }
+     drift_pal_h = h; drift_pal_s = s; drift_pal_valid = true;
+ }
+@@ -212,7 +202,7 @@ static bool DRIFT(effect_params_t* params) {
+     /* Advance ONCE per frame. LED_PROCESS_LIMIT splits a frame into chunks, and
+      * stepping per chunk would multiply the drift rate by the chunk count. */
+     if (params->iter == 0) {
+-        uint16_t inc = 8 + (rgb_matrix_config.speed >> 1);
++        uint16_t inc = 40 + ((uint16_t)rgb_matrix_config.speed << 1);
+         acc_x += inc;
+         /* y at 5/8 of x. A CONSTANT ratio matters more than a different one:
+          * two independently-derived rates land on 1:1 at the bottom of the
+@@ -232,12 +222,7 @@ static bool DRIFT(effect_params_t* params) {
+      * looping. At 32 bits the wrap is 2^22 units, an exact multiple of 256, and
+      * at the slowest drift it is ~100 days away regardless. */
+ 
+-    /* The power ladder's ceiling (power.c) on the value knob itself: a Drift
+-     * at or under it is untouched, and over it looks as the knob at the
+-     * ceiling would. Linear in drive, so it saves less than on the other
+-     * effects; the gauge counts what is driven. */
+-    uint8_t v = rgb_matrix_config.hsv.v;
+-    if (v > power_val_cap()) v = power_val_cap();
++    uint8_t v = fx_level();
+ 
+     RGB_MATRIX_USE_LIMITS(led_min, led_max);
+     for (uint8_t i = led_min; i < led_max; i++) {
+@@ -262,15 +247,6 @@ static bool DRIFT(effect_params_t* params) {
+                                   drift_noise[(gy1 << 4) | gx1], fx);
+         uint8_t n   = drift_lerp8(top, bot, fy);
+ 
+-        /* Bias the field DARK. Bilinearly interpolated uniform noise clusters
+-         * hard around the middle -- measured, 62% of samples land in the top
+-         * four ramp stops and only 8% in the darkest two -- so a linear mapping
+-         * lights the whole board and reads as "lit, with blobs" rather than
+-         * "dark, with a few bright spots". Squaring flips that to 56% in the
+-         * darkest three. This is a gamma on the FIELD, not on brightness;
+-         * rgb_matrix_config.hsv.v still scales the result. */
+-        n = scale8(n, n);
+-
+         /* Ramp position, 5-bit fraction between adjacent stops. */
+         uint8_t  idx  = n >> 5;
+         uint8_t  frac = n & 31;
+@@ -289,3 +265,255 @@ static bool DRIFT(effect_params_t* params) {
  }
  
  #endif // RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++/* BREATHE -- the whole board in the chosen colour, to a full peak. */
++RGB_MATRIX_EFFECT(BREATHE)
++
++#ifdef RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++static bool BREATHE(effect_params_t* params) {
++    RGB_MATRIX_USE_LIMITS(led_min, led_max);
++    uint8_t phase = (uint8_t)rgb_speed_phase(g_rgb_timer, rgb_speed_rate(&RGB_SPEED_BREATHE, rgb_matrix_config.speed));
++    uint8_t k     = qadd8(scale8(sin8(phase), 235), 20);
++    rgb_t   c     = rgb_matrix_hsv_to_rgb(rgb_matrix_config.hsv);
++    for (uint8_t i = led_min; i < led_max; i++) {
++        RGB_MATRIX_TEST_LED_FLAGS();
++        fx_set(i, c, k);
++    }
++    return rgb_matrix_check_finished_leds(led_max);
++}
++
++#endif // RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++/* KEY_COLORS -- every key its own colour, from the palette the program paints
++ * (hid_protocol.c, channel 0x15). It lives on the keyboard, so it works wireless. */
++RGB_MATRIX_EFFECT(KEY_COLORS)
++
++#ifdef RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++extern uint8_t key_palette[RGB_MATRIX_LED_COUNT][3];
++
++static bool KEY_COLORS(effect_params_t* params) {
++    RGB_MATRIX_USE_LIMITS(led_min, led_max);
++    uint8_t k = fx_level();
++    for (uint8_t i = led_min; i < led_max; i++) {
++        RGB_MATRIX_TEST_LED_FLAGS();
++        rgb_matrix_set_color(i, scale8(key_palette[i][0], k), scale8(key_palette[i][1], k), scale8(key_palette[i][2], k));
++    }
++    return rgb_matrix_check_finished_leds(led_max);
++}
++
++#endif // RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++/* REACTIVE -- a faint glow of the chosen colour, and each pressed key flares to
++ * full and falls back. RIPPLE -- each press sends a ring across the board that
++ * walks the hues as it spreads. Both read QMK's last-hit tracker, the 8 newest
++ * presses. Distance is the octagon approximation: no root, 648 times a frame. */
++RGB_MATRIX_EFFECT(REACTIVE)
++RGB_MATRIX_EFFECT(RIPPLE)
++
++#ifdef RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++#    define FX_GLOW 28u
++#    define RIPPLE_WIDTH 28u
++
++static bool REACTIVE(effect_params_t* params) {
++    RGB_MATRIX_USE_LIMITS(led_min, led_max);
++    uint8_t rate = 2 + (rgb_matrix_config.speed >> 5);   /* a flare in 1 s to 0.25 s */
++    rgb_t   c    = rgb_matrix_hsv_to_rgb(rgb_matrix_config.hsv);
++    for (uint8_t i = led_min; i < led_max; i++) {
++        RGB_MATRIX_TEST_LED_FLAGS();
++        uint8_t k = FX_GLOW;
++        for (uint8_t j = 0; j < g_last_hit_tracker.count; j++) {
++            if (g_last_hit_tracker.index[j] != i) continue;
++            uint32_t gone = ((uint32_t)g_last_hit_tracker.tick[j] * rate) >> 3;
++            if (gone < 255 && 255 - gone > k) k = 255 - gone;
++        }
++        fx_set(i, c, k);
++    }
++    return rgb_matrix_check_finished_leds(led_max);
++}
++
++static bool RIPPLE(effect_params_t* params) {
++    RGB_MATRIX_USE_LIMITS(led_min, led_max);
++    uint8_t rate = 3 + (rgb_matrix_config.speed >> 5);   /* a ring across the board in 1.2 s to 0.35 s */
++    rgb_t   glow = rgb_matrix_hsv_to_rgb(rgb_matrix_config.hsv);
++    for (uint8_t i = led_min; i < led_max; i++) {
++        RGB_MATRIX_TEST_LED_FLAGS();
++        uint8_t k = 0, hue = 0;
++        for (uint8_t j = 0; j < g_last_hit_tracker.count; j++) {
++            uint32_t radius = ((uint32_t)g_last_hit_tracker.tick[j] * rate) >> 4;
++            if (radius >= 250) continue;
++            int16_t  dx = (int16_t)g_led_config.point[i].x - g_last_hit_tracker.x[j];
++            int16_t  dy = (int16_t)g_led_config.point[i].y - g_last_hit_tracker.y[j];
++            uint16_t ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
++            uint16_t d   = ax > ay ? ax + (ay >> 1) : ay + (ax >> 1);
++            uint16_t gap = d > radius ? d - radius : radius - d;
++            if (gap >= RIPPLE_WIDTH) continue;
++            uint8_t w = scale8((uint8_t)((RIPPLE_WIDTH - gap) * 9u), (uint8_t)(255u - radius));
++            if (w > k) {
++                k   = w;
++                hue = rgb_matrix_config.hsv.h + (uint8_t)radius;
++            }
++        }
++        if (k > FX_GLOW) {
++            hsv_t hsv = {hue, 255, rgb_matrix_config.hsv.v};
++            fx_set(i, rgb_matrix_hsv_to_rgb(hsv), k);
++        } else {
++            fx_set(i, glow, FX_GLOW);
++        }
++    }
++    return rgb_matrix_check_finished_leds(led_max);
++}
++
++#endif // RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++/* CODE_RAIN -- bright heads fall down the columns and leave a fading tail in the
++ * chosen colour. Matrix rows and columns are the grid here, so a drop follows
++ * the real keys. */
++RGB_MATRIX_EFFECT(CODE_RAIN)
++
++#ifdef RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++static bool CODE_RAIN(effect_params_t* params) {
++    uint8_t *light = fx_mem, *head = fx_mem + RGB_MATRIX_LED_COUNT;   /* a column's drop in 1/16 rows, 0 = none */
++
++    fx_start(params);
++    RGB_MATRIX_USE_LIMITS(led_min, led_max);
++
++    if (params->iter == 0) {
++        uint8_t step = 1 + (rgb_matrix_config.speed >> 6);
++        for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; i++) light[i] = qsub8(light[i], 5);
++        for (uint8_t col = 0; col < MATRIX_COLS; col++) {
++            if (!head[col]) {
++                if (random8() < 6) head[col] = 15;   /* the next step enters the top row */
++                continue;
++            }
++            uint8_t was = head[col] >> 4;
++            head[col] += step;
++            uint8_t now = head[col] >> 4;
++            if (now == was) continue;
++            if (now > MATRIX_ROWS) {
++                head[col] = 0;
++                continue;
++            }
++            uint8_t led = g_led_config.matrix_co[now - 1][col];
++            if (led != NO_LED) light[led] = 255;
++        }
++    }
++
++    rgb_t   c    = rgb_matrix_hsv_to_rgb(rgb_matrix_config.hsv);
++    uint8_t full = fx_level();
++    for (uint8_t i = led_min; i < led_max; i++) {
++        RGB_MATRIX_TEST_LED_FLAGS();
++        if (light[i] > 235) {
++            rgb_matrix_set_color(i, full, full, full);
++        } else {
++            fx_set(i, c, light[i]);
++        }
++    }
++    return rgb_matrix_check_finished_leds(led_max);
++}
++
++#endif // RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++/* FIRE -- heat rises from the bottom row: each cell takes the mix of the three
++ * under it, less a random cooling, on the matrix grid. */
++RGB_MATRIX_EFFECT(FIRE)
++
++#ifdef RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++_Static_assert(MATRIX_ROWS * MATRIX_COLS <= sizeof(fx_mem), "the fire's grid must fit fx_mem");
++
++static bool FIRE(effect_params_t* params) {
++    static uint8_t wait = 0;
++    uint8_t (*heat)[MATRIX_COLS] = (uint8_t (*)[MATRIX_COLS])fx_mem;
++
++    fx_start(params);
++    RGB_MATRIX_USE_LIMITS(led_min, led_max);
++
++    if (params->iter == 0 && !wait--) {
++        wait = 3 - (rgb_matrix_config.speed >> 6);
++        for (uint8_t col = 0; col < MATRIX_COLS; col++) heat[MATRIX_ROWS - 1][col] = random8_min_max(130, 235);
++        for (uint8_t row = 0; row + 1 < MATRIX_ROWS; row++) {
++            for (uint8_t col = 0; col < MATRIX_COLS; col++) {
++                uint8_t  left  = col ? col - 1 : col;
++                uint8_t  right = col + 1 < MATRIX_COLS ? col + 1 : col;
++                uint16_t mix   = heat[row + 1][left] + 2u * heat[row + 1][col] + heat[row + 1][right];
++                heat[row][col] = qsub8((uint8_t)(mix >> 2), random8_max(40));
++            }
++        }
++    }
++
++    uint8_t full = fx_level();
++    for (uint8_t row = 0; row < MATRIX_ROWS; row++) {
++        for (uint8_t col = 0; col < MATRIX_COLS; col++) {
++            uint8_t i = g_led_config.matrix_co[row][col];
++            if (i == NO_LED || i < led_min || i >= led_max) continue;
++            if (!HAS_ANY_FLAGS(g_led_config.flags[i], params->flags)) continue;
++            uint8_t t = heat[row][col];   /* black, red, yellow, white */
++            uint8_t r = t < 85 ? t * 3 : 255;
++            uint8_t g = t < 85 ? 0 : t < 170 ? (t - 85) * 3 : 255;
++            uint8_t b = t < 170 ? 0 : (t - 170) * 3;
++            rgb_matrix_set_color(i, scale8(r, full), scale8(g, full), scale8(b, full));
++        }
++    }
++    return rgb_matrix_check_finished_leds(led_max);
++}
++
++#endif // RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++/* SPIRAL -- a rainbow turning around the middle of the board. */
++RGB_MATRIX_EFFECT(SPIRAL)
++
++#ifdef RGB_MATRIX_CUSTOM_EFFECT_IMPLS
++
++static bool SPIRAL(effect_params_t* params) {
++    RGB_MATRIX_USE_LIMITS(led_min, led_max);
++    uint8_t time = (uint8_t)rgb_speed_phase(g_rgb_timer, rgb_speed_rate(&RGB_SPEED_CYCLE_SWEEP, rgb_matrix_config.speed));
++    for (uint8_t i = led_min; i < led_max; i++) {
++        RGB_MATRIX_TEST_LED_FLAGS();
++        int16_t dx = (int16_t)g_led_config.point[i].x - k_rgb_matrix_center.x;
++        int16_t dy = (int16_t)g_led_config.point[i].y - k_rgb_matrix_center.y;
++        uint8_t d  = sqrt16((uint16_t)(dx * dx + dy * dy));
++        hsv_t   hsv = {(uint8_t)(atan2_8(dy, dx) + d * 2 - time), 255, rgb_matrix_config.hsv.v};
++        rgb_t   c   = rgb_matrix_hsv_to_rgb(hsv);
++        rgb_matrix_set_color(i, c.r, c.g, c.b);
++    }
++    return rgb_matrix_check_finished_leds(led_max);
++}
++
++#endif // RGB_MATRIX_CUSTOM_EFFECT_IMPLS
 +
 +/* HOST_COLORS -- every key shows the color the computer sent for it.
 + *
@@ -150,6 +1143,8 @@ index 013b1f40..3671374c 100644
 + * paints it, scaled by the board's brightness. If the host goes quiet for 2 s
 + * host_colors_housekeeping() brings back the saved effect, so wireless use and a
 + * closed program behave like any other effect. Dark is only that brief moment.
++ * The last mode: nothing else moves when it comes and goes, and the keyboard's
++ * own step wraps past it to the first.
 + */
 +RGB_MATRIX_EFFECT(HOST_COLORS)
 +
@@ -174,3 +1169,59 @@ index 013b1f40..3671374c 100644
 +}
 +
 +#endif // RGB_MATRIX_CUSTOM_EFFECT_IMPLS
+diff --git a/keyboards/a_jazz/ak820pro/rgb_speed.c b/keyboards/a_jazz/ak820pro/rgb_speed.c
+index d43f8e8f..7ca17183 100644
+--- a/keyboards/a_jazz/ak820pro/rgb_speed.c
++++ b/keyboards/a_jazz/ak820pro/rgb_speed.c
+@@ -2,22 +2,17 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ #include "rgb_speed.h"
+ 
+-/* The effects' speeds (JD, 10-25), each geometric in speed: every step of
+- * the menu's 1% (2.55 of 255) scales the rate by the same 4.2%. Upstream's
+- * runner is linear, (speed / 4 + 1) / 256 of a hue a millisecond, a cycle
+- * in 65 s at 0 and 1 s at 255, so most of its range is fast:
+- * - Cycle All, the whole board one colour: "even on 1 the color cycles about
+- *   10x too fast ... At 100% it's just about a multi-color strobe." A cycle
+- *   in 10 min at 0, 10 s at 255.
+- * - Cycle L-R and U-D, the rainbow across the board: "I'd like them a little
+- *   slower". 2 min at 0, 2 s at 255.
+- * - Jellybean Raindrops: "I don't think speed even affects Jellybean at
+- *   all". Upstream drops one when (ms * (speed + 16) / 256) % 5 == 0, a fifth
+- *   of its frames at any speed (~12 a second at ~60 frames). A drop every
+- *   2 s at 0, 30 a second at 255. */
+-const rgb_speed_curve_t RGB_SPEED_CYCLE_ALL   = {7158u, 1512u};    /* 2^32 / 600,000 ms; log2(60) */
+-const rgb_speed_curve_t RGB_SPEED_CYCLE_SWEEP = {35791u, 1512u};   /* 2^32 / 120,000 ms */
+-const rgb_speed_curve_t RGB_SPEED_JELLYBEAN   = {8389u, 1512u};    /* 2^24 / 2,000 ms */
++/* The effects' speeds, each geometric in speed. JD's were slower still (10
++ * min and 2 min at 0): at the bottom of those ranges the rainbows looked
++ * stopped, so every speed here visibly moves:
++ * - Cycle All, the whole board one colour: 60 s at 0, 4 s at 255.
++ * - Cycle L-R and U-D, the rainbow across the board: 20 s at 0, 1.5 s at 255.
++ * - Jellybean Raindrops: 5 drops a second at 0, 30 at 255.
++ * - Breathe: a breath in 8 s at 0, 1.2 s at 255. */
++const rgb_speed_curve_t RGB_SPEED_CYCLE_ALL   = {71583u, 1000u};    /* 2^32 / 60,000 ms; log2(15) */
++const rgb_speed_curve_t RGB_SPEED_CYCLE_SWEEP = {214748u, 957u};    /* 2^32 / 20,000 ms; log2(13.3) */
++const rgb_speed_curve_t RGB_SPEED_JELLYBEAN   = {83886u, 662u};     /* 2^24 / 200 ms; log2(6) */
++const rgb_speed_curve_t RGB_SPEED_BREATHE     = {536871u, 701u};    /* 2^32 / 8,000 ms; log2(6.7) */
+ 
+ /* 2^(e / 256) in 16.16, e under 15 octaves: 2^(i / 16) at the fraction's top
+  * four bits, linear between (within 0.03%). */
+diff --git a/keyboards/a_jazz/ak820pro/rgb_speed.h b/keyboards/a_jazz/ak820pro/rgb_speed.h
+index d0ef1650..8e54adb1 100644
+--- a/keyboards/a_jazz/ak820pro/rgb_speed.h
++++ b/keyboards/a_jazz/ak820pro/rgb_speed.h
+@@ -14,9 +14,10 @@ typedef struct {
+     uint16_t octaves;   /* its doublings to speed 255, 8.8 (under 15) */
+ } rgb_speed_curve_t;
+ 
+-extern const rgb_speed_curve_t RGB_SPEED_CYCLE_ALL;     /* a hue cycle in 10 min to 10 s */
+-extern const rgb_speed_curve_t RGB_SPEED_CYCLE_SWEEP;   /* Cycle L-R and U-D: 2 min to 2 s */
+-extern const rgb_speed_curve_t RGB_SPEED_JELLYBEAN;     /* a drop every 2 s to 30 a second */
++extern const rgb_speed_curve_t RGB_SPEED_CYCLE_ALL;     /* a hue cycle in 60 s to 4 s */
++extern const rgb_speed_curve_t RGB_SPEED_CYCLE_SWEEP;   /* Cycle L-R and U-D: 20 s to 1.5 s */
++extern const rgb_speed_curve_t RGB_SPEED_JELLYBEAN;     /* 5 drops a second to 30 */
++extern const rgb_speed_curve_t RGB_SPEED_BREATHE;       /* a breath in 8 s to 1.2 s */
+ 
+ uint32_t rgb_speed_rate(const rgb_speed_curve_t *c, uint8_t speed);
+ uint32_t rgb_speed_phase(uint32_t ms, uint32_t rate);   /* (ms * rate) >> 24 */

@@ -189,9 +189,9 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
   <h1>Экран</h1><p class="sub">Что показывать на экранчике 128×128.</p>
   <div class="note qmkOnly" style="margin:0 0 18px">Экран показывает две строки латиницей, кириллица передаётся транслитом. Когда нечего показывать, на нём часы.</div>
   <div class="card qmkOnly"><h2>Своя GIF на экране</h2>
-    <p class="hint" style="margin-top:-6px">GIF записывается в память клавиатуры и играет сама, даже без программы. Включить и выключить: Fn+G. Скорость прошивки постоянная, 10 кадров в секунду.</p>
-    <div class="setting"><div class="t"><b>Кадров не больше</b><span>Примерно 15 секунд загрузки на кадр: 24 кадра занимают 6 минут. Подсветка и текст в это время работают</span></div>
-      <div class="range"><input type="range" min="4" max="60" step="2" data-cfg="gif_max_frames"><output data-out="gif_max_frames"></output></div></div>
+    <p class="hint" style="margin-top:-6px">GIF записывается в память клавиатуры и играет сама, даже без программы. Включить и выключить: Fn+G. Каждый кадр идёт со скоростью из файла, до 50 кадров в секунду.</p>
+    <div class="setting"><div class="t"><b>Кадров не больше</b><span>Длинная GIF прореживается и сохраняет скорость, но становится менее плавной. Подсветка и текст во время загрузки работают</span></div>
+      <div class="range"><input type="range" min="4" max="244" step="10" data-cfg="gif_keyboard_frames"><output data-out="gif_keyboard_frames"></output></div></div>
     <div class="row" style="margin-top:12px"><button class="btn primary" id="gifBtn" onclick="api('upload_gif')">Выбрать и загрузить GIF…</button></div>
     <div id="gifBox" hidden style="margin-top:14px"><div class="bar" style="width:100%"><i id="gifFill"></i></div><div class="hint" id="gifText" style="margin-top:8px"></div></div></div>
   <div class="card stockOnly">
@@ -234,6 +234,10 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
     <div class="setting" id="qmkColorRow" style="margin-top:12px"><div class="t"><b>Цвет</b></div><input type="color" data-cfg="qmk_color"></div>
     <div class="setting"><div class="t"><b>Яркость</b></div><div class="range"><input type="range" min="5" max="100" step="5" data-cfg="qmk_brightness"><output data-out="qmk_brightness" data-unit="%"></output></div></div>
     <div class="setting"><div class="t"><b>Скорость</b></div><div class="range"><input type="range" min="0" max="100" step="5" data-cfg="qmk_speed"><output data-out="qmk_speed" data-unit="%"></output></div></div></div>
+  <div class="card" id="qmkPaint" style="margin-top:18px"><h2>Свои цвета клавиш</h2>
+    <p class="hint" style="margin-top:-6px">Выберите цвет и нажимайте на клавиши на картинке выше или на группу ниже. Цвета хранятся в клавиатуре и работают без кабеля.</p>
+    <div class="setting"><div class="t"><b>Цвет кисти</b></div><input type="color" id="qmkBrush" value="#ff2060"></div>
+    <div class="row" style="margin-top:10px"><button class="btn small" onclick="paintGroup('all')">Все клавиши</button><button class="btn small" onclick="paintGroup('letters')">Буквы</button><button class="btn small" onclick="paintGroup('mods')">Модификаторы</button><button class="btn small" onclick="paintGroup('digits')">Цифры</button><button class="btn small" onclick="paintGroup('fkeys')">F-ряд</button><button class="btn small" onclick="paintGroup('arrows')">Стрелки</button></div></div>
   <div class="card stockOnly" style="margin-top:18px"><h2>Эффект</h2><div class="tiles" id="fxTiles"></div></div>
   <div class="card" id="softCard">
     <h2>Настройки эффекта</h2>
@@ -246,7 +250,7 @@ select, input[type=text] { background: var(--bg); border: 1px solid var(--line);
     <div class="setting" id="boostRow"><div class="t"><b>Сила цветов</b><span>Усредняя участок экрана, программа получает тусклый цвет. Чем выше значение, тем ярче и насыщеннее клавиши, как у встроенных эффектов</span></div>
       <div class="range"><input type="range" min="0" max="100" step="5" data-cfg="screen_boost"><output data-out="screen_boost" data-unit="%"></output></div></div>
     <div class="setting" id="fallbackRow"><div class="t"><b>Запасной эффект для игр</b><span>Игра в эксклюзивном полноэкранном режиме скрывает картинку от программы. Чтобы работали цвета игры, выберите в её настройках режим «Без рамки» (Borderless)</span></div>
-      <div class="seg" data-seg="screen_fallback"><button data-v="wave">Волна</button><button data-v="aurora">Сияние</button><button data-v="visualizer">Эквалайзер</button><button data-v="reactive">Нажатия</button></div></div>
+      <div class="seg" data-seg="screen_fallback"><button data-v="wave">Волна</button><button data-v="aurora">Сияние</button><button data-v="visualizer">Эквалайзер</button><button data-v="reactive">Нажатия</button><button data-v="hardware">Эффект клавиатуры</button></div></div>
     <div class="setting" id="darkRow"><div class="t"><b>Не светить на тёмных цветах</b><span>Клавиши под тёмными участками экрана гаснут</span></div>
       <label class="switch"><input type="checkbox" data-cfg="screen_dark_off"><i></i></label></div>
     <div class="setting" id="darkLevelRow"><div class="t"><b>Порог темноты</b><span>Всё, что темнее этого значения, не подсвечивается</span></div>
@@ -373,7 +377,7 @@ function buildFx() {
   $$("[data-fx]").forEach(t => t.onclick = () => t.dataset.fx === "hardware" ? (api("apply_hardware"), toast("Включён встроенный эффект клавиатуры"), cfg.light_mode = "hardware", sync()) : set("light_mode", t.dataset.fx));
 }
 function buildQmk() {
-  $("#qmkFx").innerHTML = D.qmk_effects.map(e => `<div class="tile" data-qfx="${e.id}"><b>${e.title}</b></div>`).join("") + `<div class="tile" data-qscreen="1"><b>Цвета экрана</b><span id="qmkScreenHint"></span></div>` + D.effects.filter(e => !["screen", "hardware"].includes(e.id)).map(e => `<div class="tile hostOnly" data-qsoft="${e.id}"><b>${e.title}</b><span>${e.desc}</span></div>`).join("");
+  $("#qmkFx").innerHTML = D.qmk_effects.map(e => `<div class="tile" data-qfx="${e.id}"><b>${e.title}</b></div>`).join("") + `<div class="tile" data-qscreen="1"><b>Цвета экрана</b><span id="qmkScreenHint"></span></div>` + D.effects.filter(e => e.id === "visualizer").map(e => `<div class="tile hostOnly" data-qsoft="${e.id}"><b>${e.title}</b><span>${e.desc}</span></div>`).join("");
   $$("[data-qsoft]").forEach(t => t.onclick = () => set("light_mode", t.dataset.qsoft));
   $$("[data-qfx]").forEach(t => t.onclick = async () => { cfg.qmk_effect = +t.dataset.qfx; cfg.light_mode = "hardware"; sync(); api("apply_hardware"); cfg = await api("update", {qmk_effect: cfg.qmk_effect, light_mode: "hardware"}); sync(); });
   $("[data-qscreen]").onclick = () => set("light_mode", "screen");
@@ -386,8 +390,8 @@ function buildKbd() {
   $("#kbd").innerHTML = D.layout.map(r => `<div class="krow">${r.map(k => `<div class="key" data-k="${k.idx}" style="--w:${k.w}">${k.label}</div>`).join("")}</div>`).join("");
   $$(".key").forEach(e => {
     keyEls[e.dataset.k] = e;
-    e.onmousedown = () => { if (painting) { custom[e.dataset.k] = brush; } else { ripples.push([+e.dataset.k, performance.now()]); } };
-    e.onmouseenter = ev => { if (painting && ev.buttons) custom[e.dataset.k] = brush; };
+    e.onmousedown = () => { if (paintingLeds()) paintLeds([D.key_to_led[e.dataset.k]]); else if (painting) { custom[e.dataset.k] = brush; } else { ripples.push([+e.dataset.k, performance.now()]); } };
+    e.onmouseenter = ev => { if (!ev.buttons) return; if (paintingLeds()) paintLeds([D.key_to_led[e.dataset.k]]); else if (painting) custom[e.dataset.k] = brush; };
   });
   // key positions for the preview effects, same as the keyboard's grid
   D.pos = {}; D.layout.forEach((r, y) => r.forEach((k, x) => D.pos[k.idx] = [x / (r.length - 1), y / (D.layout.length - 1)]));
@@ -402,6 +406,21 @@ function paintMode(on) { painting = on; $("#paintBtn").textContent = on ? "Го�
 function fillAll() { Object.keys(keyEls).forEach(k => custom[k] = brush); paintMode(true); }
 function clearKeys() { custom = {}; paintMode(true); }
 function saveKeys() { api("apply_keys", custom); cfg.light_mode = "hardware"; paintMode(false); sync(); toast("Цвета клавиш записаны в клавиатуру"); }
+
+// "Свои цвета клавиш": the palette lives on the keyboard, and the picture shows its real keys
+const paintingLeds = () => qmkFw && cfg.light_mode === "hardware" && cfg.qmk_effect === D.key_colors_effect;
+let paintSend;
+function paintLeds(leds) {
+  const c = $("#qmkBrush").value;
+  leds.forEach(l => { if (l !== undefined) D.palette[l] = c; });
+  clearTimeout(paintSend); paintSend = setTimeout(() => api("set_palette", D.palette), 120);
+}
+function paintGroup(g) {
+  const keys = D.layout.flatMap((r, y) => r.map(k => ({...k, y}))), mod = k => D.modifier_leds.includes(D.key_to_led[k.idx]);
+  const groups = {all: () => true, letters: k => /^[A-Z]$/.test(k.label), mods: mod, digits: k => k.y === 1 && /^[0-9]$/.test(k.label),
+                  fkeys: k => k.y === 0 && /^F[0-9]+$/.test(k.label), arrows: k => "↑←↓→".includes(k.label) && k.label};
+  paintLeds(keys.filter(groups[g]).map(k => D.key_to_led[k.idx]));
+}
 
 function buildApps() {
   $("#apps").innerHTML = D.apps.map(a => `<div class="app"><div class="badge" style="background:${a.color}">${a.label}</div><div class="name">${a.title}</div>
@@ -438,6 +457,7 @@ function sync() {
   $("[data-qscreen]").classList.toggle("on", cfg.light_mode === "screen");
   $$("[data-qsoft]").forEach(t => t.classList.toggle("on", cfg.light_mode === t.dataset.qsoft));
   $("#qmkColorRow").style.display = (D.qmk_effects.find(e => e.id === cfg.qmk_effect) || {}).color ? "" : "none";
+  $("#qmkPaint").style.display = paintingLeds() ? "" : "none";
   $("#customPath").textContent = cfg.idle_custom ? cfg.idle_custom.split(/[\\/]/).pop() : "";
   const qc = cfg.idle_style === "quote_clock"; $("#clockRow").style.display = qc ? "" : "none"; $("#clockNote").style.display = qc ? "" : "none";
   const m = cfg.light_mode;
@@ -465,7 +485,7 @@ function sync() {
 let lastPreview = null, logLen = 0, screenPreview = null, qmkFw = false, ledColors = null;
 // the real key colors, polled apart from status(): they change many times a second
 async function pollKeys() {
-  try { ledColors = qmkFw && $("#light").classList.contains("on") ? await api("key_colors") : null; } catch (e) {}
+  try { ledColors = qmkFw && !document.hidden && $("#light").classList.contains("on") ? await api("key_colors") : null; } catch (e) {}
   setTimeout(pollKeys, 100);
 }
 async function poll() {
@@ -473,7 +493,7 @@ async function poll() {
     const s = await api("status");
     screenPreview = s.light_preview;
     const isQmk = s.firmware === "qmk";
-    qmkFw = isQmk;
+    if (qmkFw !== isQmk) { qmkFw = isQmk; sync(); }
     $("#qmkLightNote").textContent = s.zones ? "Наша прошивка: эффекты клавиатуры и цвета экрана по зонам, каждая клавиша повторяет свою часть монитора. В игре нужен режим «Без рамки» (Borderless)." : "На этой прошивке «Цвета экрана» работают одним цветом на всю клавиатуру.";
     $$(".hostOnly").forEach(e => e.style.display = s.zones ? "" : "none");
     $("#qmkScreenHint").textContent = s.zones ? "Каждая клавиша повторяет свою часть экрана" : "Один цвет на всю клавиатуру";
@@ -504,65 +524,17 @@ async function poll() {
   setTimeout(poll, 700);
 }
 
-// ---- live keyboard preview (approximates what the effects do on the real keys)
+// ---- live keyboard preview: real colors on QMK, approximated on the stock firmware
 const ripples = [];
 const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 function hsv(h) { const f = n => { const k = (n + h * 6) % 6; return 255 * (1 - Math.max(0, Math.min(k, 4 - k, 1))); }; return [f(5), f(3), f(1)]; }
-// The keyboard's own effects can't be read back, so the same rules run here (rgb_matrix_kb.inc, QMK's
-// animations): the look matches, the random drops themselves are not the ones on the keys.
-const sim = {v: {}, h: {}, c: {}, last: 0, wait: 0, drop: 0};
-function simStep(id, t, keys) {
-  const frames = Math.min(20, Math.round((t - sim.last) * 62 / 1000));
-  if (frames < 1) return;
-  sim.last = t;
-  const speed = cfg.qmk_speed * 2.55;
-  for (let f = 0; f < frames; f++) {
-    for (const k of keys) sim.v[k] = Math.max(0, (sim.v[k] || 0) - 4);
-    if (--sim.wait <= 0) {
-      const k = keys[Math.floor(Math.random() * keys.length)];
-      sim.v[k] = 255; sim.h[k] = Math.random();
-      sim.wait = 1 + Math.floor((255 - speed) * 24 / 255);
-    }
-    if (--sim.drop <= 0) {
-      sim.c[keys[Math.floor(Math.random() * keys.length)]] = Math.random();
-      sim.drop = 62 / (2 + speed / 16);
-    }
-  }
-}
-function satColor(h, sat) { return hsv(h).map(a => 255 - (255 - a) * sat); }
-function hueOf(rgb) {
-  const [r, g, b] = rgb, max = Math.max(r, g, b), d = max - Math.min(r, g, b);
-  if (!d) return 0;
-  const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-  return h / 6;
-}
-function qmkLook(id, x, y, s, k) {
-  const col = hex(cfg.qmk_color), sp = .1 + cfg.qmk_speed / 40, led = D.key_to_led[k];
-  const sat = Math.max(...col) ? 1 - Math.min(...col) / Math.max(...col) : 0;
-  switch (id) {
-    case 1: return col;
-    case 2: return D.modifier_leds.includes(led) ? satColor((hueOf(col) + cfg.qmk_speed * 2.55 / 256) % 1, sat) : col;
-    case 3: return hsv((s * .08 * sp) % 1);
-    case 4: return hsv(((x - s * .12 * sp) % 1 + 1) % 1);
-    case 5: return hsv(((y - s * .12 * sp) % 1 + 1) % 1);
-    case 6: if (sim.c[k] === undefined) sim.c[k] = Math.random();
-            return satColor(sim.c[k], .75);
-    case 7: return [0, 0, 0];
-    case 8: return satColor(sim.h[k] || 0, sat).map(a => a * (sim.v[k] || 0) / 255);
-    case 9: return satColor((hueOf(col) + .08 * Math.sin(x * 5 + s * sp * .6)) % 1, sat).map(a => a * (.45 + .55 * (.5 + .5 * Math.sin(x * 4 - y * 3 + s * sp))));
-  }
-  return [0, 0, 0];
-}
-
 function animate(t) {
   if (!D) return requestAnimationFrame(animate);
   const s = t / 1000, m = cfg.light_mode, sp = .4 + .3 * cfg.light_speed, br = cfg.light_brightness / 100;
   const c1 = hex(cfg.light_color), c2 = hex(cfg.light_color2);
-  if (qmkFw && !ledColors) simStep(cfg.qmk_effect, t, Object.keys(keyEls));
   for (const [k, el] of Object.entries(keyEls)) {
     const [x, y] = D.pos[k]; let c;
-    if (qmkFw && ledColors) c = hex(ledColors[D.key_to_led[k]] || "#000000");
-    else if (qmkFw) c = qmkLook(cfg.qmk_effect, x, y, s, k).map(a => a * cfg.qmk_brightness / 100);
+    if (qmkFw) c = hex(ledColors && ledColors[D.key_to_led[k]] || "#000000");
     else if (painting || (m === "hardware" && Object.keys(custom).length)) c = custom[k] ? hex(custom[k]) : [0, 0, 0];
     else if (m === "wave") c = hsv(((x * .9 + y * .2 - s * .15 * sp) % 1 + 1) % 1);
     else if (m === "aurora") { const q = .5 + .25 * Math.sin(x * 5 + s * sp) + .25 * Math.sin(y * 4 - x * 2 + s * sp * .7); c = c1.map((a, i) => a + (c2[i] - a) * q); }
@@ -575,11 +547,11 @@ function animate(t) {
         const d = Math.hypot(x - px, (y - py) * .35), q = +k === rk ? Math.max(0, 1 - age / .6) : Math.max(0, 1 - Math.abs(d - age * 1.4) / .06) * Math.max(0, 1 - age / 1.2);
         if (q > 0) c = c.map((a, i) => Math.max(a, (+k === rk ? c1 : c2)[i] * q)); }
     } else { const hc = cfg.hw_rainbow ? hsv(((x - s * .1) % 1 + 1) % 1) : hex(cfg.hw_color); c = cfg.hw_mode === 0 ? [0, 0, 0] : hc.map(a => a * (cfg.hw_brightness / 5)); }
-    if (qmkFw ? ledColors : m !== "hardware" && !painting) c = c.map(a => a * br);
+    if (!qmkFw && m !== "hardware" && !painting) c = c.map(a => a * br);
     el.style.setProperty("--c", c.map(Math.round).join(","));
   }
   while (ripples.length && t - ripples[0][1] > 1300) ripples.shift();
-  if (m === "reactive" && !painting && Math.random() < .015) ripples.push([+Object.keys(keyEls)[Math.floor(Math.random() * 80)], t]);
+  if (!qmkFw && m === "reactive" && !painting && Math.random() < .015) ripples.push([+Object.keys(keyEls)[Math.floor(Math.random() * 80)], t]);
   requestAnimationFrame(animate);
 }
 </script>

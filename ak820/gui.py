@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 from . import render
 from .keyboard import KEYS, MODES, ROW_ENDS
 from .lights import EFFECTS, key_to_led
-from .qmk import EFFECTS as QMK_EFFECTS, MODIFIER_LEDS
+from .qmk import EFFECT_KEY_COLORS, EFFECTS as QMK_EFFECTS, LEDS as QMK_LEDS, MODIFIER_LEDS
 from .service import ROOT, UPLOADING, Service
 
 UI = Path(__file__).resolve().parent / "ui" / "index.html"
@@ -66,6 +66,9 @@ class Api:
             "qmk_effects": [{"id": i, "title": t, "color": c} for i, t, c in QMK_EFFECTS],
             "key_to_led": key_to_led(),
             "modifier_leds": MODIFIER_LEDS,
+            "key_colors_effect": EFFECT_KEY_COLORS,
+            "palette": self._s.cfg["key_palette"] or [  # the firmware's own colors until first painted
+                "#aa00ff" if i in MODIFIER_LEDS else "#00dcff" for i in range(len(QMK_LEDS))],
             "hw_modes": [{"id": i, "name": HW_NAMES[n], "flags": f} for i, (n, f) in MODES.items()],
             "idle": [{"id": k, "title": t} for k, t in render.IDLE.items()],
             "layout": layout(),
@@ -78,11 +81,19 @@ class Api:
         return self._s.status()
 
     def key_colors(self):
-        """What the computer is drawing on the keys right now, or None for the keyboard's own effect."""
-        lights = self._s.lights
-        if not lights.host_on:
+        """The real color of every LED: as sent when the computer draws, else read back from the
+        keyboard. None when there's nothing to read, or a GIF upload needs the connection."""
+        s = self._s
+        if s.lights.host_on:
+            k = s.cfg["light_brightness"] / 100
+            return ["#%02x%02x%02x" % tuple(int(c * k) for c in s.lights.preview.get(i, (0, 0, 0)))
+                    for i in s.lights.order]
+        if not getattr(s.kb, "qmk", False) or s.gif_progress:
             return None
-        return ["#%02x%02x%02x" % lights.preview.get(i, (0, 0, 0)) for i in lights.order]
+        try:
+            return ["#%02x%02x%02x" % rgb for rgb in s.kb.read_leds()]
+        except (OSError, ValueError):
+            return None
 
     def update(self, changes):
         self._s.update(changes)
@@ -102,6 +113,9 @@ class Api:
 
     def apply_keys(self, colors):
         self._s.apply_keys(colors)
+
+    def set_palette(self, colors):
+        self._s.set_palette(colors)
 
     def choose_image(self):
         res = self._window.create_file_dialog(webview.OPEN_DIALOG, file_types=("Картинки (*.gif;*.png;*.jpg;*.jpeg;*.webp;*.bmp)",))

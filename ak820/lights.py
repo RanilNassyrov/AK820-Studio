@@ -103,6 +103,7 @@ class Lights(threading.Thread):
         self.grid = key_grid()
         self.flash_color, self.flash_until = None, 0.0
         self.levels = np.zeros(BANDS)
+        self.peak = 0.3  # loudest band lately: quiet music still fills the keyboard
         self.audio = Loopback()
         self.keys = KeyPresses()
         self.audio_retry = 0.0
@@ -133,8 +134,6 @@ class Lights(threading.Thread):
     def qmk_step(self, cfg, kb):
         """This firmware takes one color for the whole keyboard, not one per key, so the screen
         effect runs as a single color and the other modes stay on the keyboard's own effects."""
-        self.keys.stop()
-        self._audio(False)
         screen = cfg["light_mode"] == "screen"
         self.capture.want(screen)
         if kb is not self.host_kb:
@@ -146,6 +145,8 @@ class Lights(threading.Thread):
                 self.key_to_led = key_to_led()
         if self.host_ok:
             return self.host_step(cfg, kb, screen)
+        self.keys.stop()
+        self._audio(False)
         if screen and not self.capture.exclusive:
             frame = self.screen_colors(dict(cfg, screen_light_style="single"))
             if frame:
@@ -282,6 +283,8 @@ class Lights(threading.Thread):
             if self.levels.max() < 0.02:
                 return None
             b = np.zeros(BANDS)
+        self.peak = max(b.max(), self.peak * 0.997, 0.15)
+        b = b / self.peak
         # fast attack, slow fall, like a VU meter
         self.levels = np.where(b > self.levels, b, self.levels * 0.82)
         out = {}
@@ -293,7 +296,7 @@ class Lights(threading.Thread):
             elif cfg["visualizer_style"] == "fire":
                 out[i] = (255, int(200 * (1 - height)), 0)
             else:
-                out[i] = _hsv((x * 0.8 + now * 0.05) % 1, 0.4 + 0.6 * level)
+                out[i] = _hsv((x * 0.8 + now * 0.05) % 1)
         return out
 
     def screen_colors(self, cfg):
