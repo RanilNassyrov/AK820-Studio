@@ -29,6 +29,15 @@ FRAME_MS = 100  # the firmware's fixed playback speed, whatever the file says
 MATRIX = 6, 15
 KC_G, KC_TRANSPARENT, ANIM_TOG = 0x000A, 0x0001, 0x7E11  # QK_KB_0 + 17 in via.json
 FN_LAYERS = 1, 3  # Windows and Mac sides
+BASE_LAYERS = 0, 2
+# Keys printed differently from the firmware author's own layout: (row, col) -> printed key, and what
+# his layout puts there on the Windows and Mac sides. Anything else there is the user's own choice.
+PRINTED_KEYS = {
+    (0, 13): (0x004C, (0x006E,)),          # Del, F19 in his layout
+    (2, 14): (0x004B, (0x004C,)),          # PgUp, Del
+    (3, 14): (0x004E, (0x004D,)),          # PgDn, End
+    (3, 0): (0x0039, (0x5221, 0x5223)),    # Caps Lock, a second Fn
+}
 HOST_COLORS_CHANNEL, EFFECT_HOST, HOST_PER_PACKET = 0x14, 10, 9  # our firmware patch
 # each LED's place on the board, QMK's 0-224 by 0-64 grid (keyboard.json)
 LEDS = [
@@ -151,19 +160,36 @@ class QmkKeyboard:
         finally:
             self.flash(FC_UNLOCK, 0)
 
+    def keycode(self, layer, row, col):
+        return int.from_bytes(self.request(VIA_GET_KEYCODE, layer, row, col)[4:6], "big")
+
+    def set_keycode(self, layer, row, col, code):
+        self.request(VIA_SET_KEYCODE, layer, row, col, code >> 8, code & 255)
+
+    def match_printed_keys(self):
+        """Puts the keys back to what's printed on them. A flash resets the layout, hence every connect.
+        Returns how many keys changed."""
+        changed = 0
+        for layer in BASE_LAYERS:
+            for (row, col), (printed, authors) in PRINTED_KEYS.items():
+                if self.keycode(layer, row, col) in authors:
+                    self.set_keycode(layer, row, col, printed)
+                    changed += 1
+        return changed
+
     def bind_anim_key(self):
         """The firmware's animation toggle is not on any key: put it on Fn+G (Fn+Delete switches the
         screen off). Returns False when that key already does something, so a user's own binding
         is left alone."""
-        keycode = lambda layer, row, col: int.from_bytes(self.request(VIA_GET_KEYCODE, layer, row, col)[4:6], "big")
         spot = next(((r, c) for r in range(MATRIX[0]) for c in range(MATRIX[1])
-                     if keycode(0, r, c) == KC_G), None)
+                     if self.keycode(0, r, c) == KC_G), None)
         if not spot:
             return False
-        free = [layer for layer in FN_LAYERS if keycode(layer, *spot) in (KC_TRANSPARENT, 0, ANIM_TOG)]
-        for layer in free:
-            self.request(VIA_SET_KEYCODE, layer, *spot, ANIM_TOG >> 8, ANIM_TOG & 255)
-        return len(free) == len(FN_LAYERS)
+        current = {layer: self.keycode(layer, *spot) for layer in FN_LAYERS}
+        for layer, code in current.items():
+            if code in (KC_TRANSPARENT, 0):
+                self.set_keycode(layer, *spot, ANIM_TOG)
+        return all(code in (KC_TRANSPARENT, 0, ANIM_TOG) for code in current.values())
 
     def sync_time(self):
         t = time.localtime()

@@ -164,6 +164,11 @@ class Service:
             self.connected = None
             return
         self.connected = True
+        if getattr(self.kb, "qmk", False):
+            fixed = self.kb.match_printed_keys()
+            self.kb.bind_anim_key()
+            if fixed:
+                self.log(f"клавиши приведены к надписям: {fixed}")
         self.shown = None
         self.text_shown = ()  # unknown: clears whatever was left on the screen
         self.log("клавиатура подключена")
